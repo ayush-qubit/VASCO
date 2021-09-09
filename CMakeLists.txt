@@ -1,5 +1,5 @@
 cmake_minimum_required(VERSION 3.16)
-project(VascoAbstraction)
+project(vasco)
 set(LLVM_ROOT "/usr/lib/llvm-12" CACHE PATH "/usr/lib/llvm-12")
 
 list(APPEND CMAKE_PREFIX_PATH "${LLVM_ROOT}/share/llvm/cmake")
@@ -15,6 +15,6 @@ include_directories(${LLVM_INCLUDE_DIRS})
 set(CMAKE_LIBRARY_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR}/lib)
 set(CMAKE_RUNTIME_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR}/bin)
 
-add_subdirectory(Vasco_Abstraction)
+add_subdirectory(vasco)
 #add_subdirectory(passes)
 
