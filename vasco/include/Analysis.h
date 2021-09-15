@@ -1642,12 +1642,17 @@ void Analysis<F,B>::doAnalysisBackward()
                     }
                     else//step 20
                     {
+                        errs() <<REDB"\n----------------------------------------------\n";
+                        errs() << MAGENTAB"CREATING A NEW CONTEXT!!!!!!!" << "\n";
                         //creating a new context
                         INIT_CONTEXT(new_context_object);//step 21
 
                         pair<int,Instruction*>mypair=make_pair(current_context_label,&(*inst));
                         //step 14
                         context_transition_graph[mypair]=context_label_counter;
+                        errs() << "LABEL:- " << mypair.first << "\n";
+                        errs() << "INSTRUCTION:- " << *inst << "\n";
+                        errs() <<REDB"\n----------------------------------------------\n";
                         return;
                         //===========================================================
                         // IN[&(*inst)].second=computeInFromOut(*inst);
