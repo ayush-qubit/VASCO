@@ -651,10 +651,14 @@ void Analysis<F,B>::doAnalysis(Module &M)
         //backward analysis
         setCurrentAnalysisDirection(2);
         int backward_iteration_count=0;
+        int iteration = 1;
         while (backward_worklist.size()>0)
         {
+            errs() << REDB << "\n--------------------------------------Start Iteration-" << iteration << "--------------------------------------\n";
             doAnalysisBackward();
             backward_iteration_count++;
+            printContext();
+            errs() << REDB << "\n--------------------------------------End Iteration-" << iteration++ << "--------------------------------------\n";
         }
         errs()<<REDB<<"\nbackward_iteration_count:"<<backward_iteration_count;
     }
@@ -663,10 +667,14 @@ void Analysis<F,B>::doAnalysis(Module &M)
         //forward analysis
         setCurrentAnalysisDirection(1);
         int forward_iteration_count=0;
+        int iteration = 1;
         while (forward_worklist.size()>0)
         {
+            errs() << REDB << "\n--------------------------------------Start Iteration-" << iteration << "--------------------------------------\n";
             doAnalysisForward();
             forward_iteration_count++;
+            printContext();
+            errs() << REDB << "\n--------------------------------------End Iteration-" << iteration++ << "--------------------------------------\n";
         }
         errs()<<MAGENTAB"\nforward_iteration_count:"<<forward_iteration_count<<" FW size:"<<forward_worklist.size()<<RST;
     }
