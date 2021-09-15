@@ -1138,7 +1138,6 @@ void Analysis<F,B>::doAnalysisForward()
                 Instruction &I=*inst;
                 if ( CallInst *ci = dyn_cast<CallInst>(&I))
                 {
-
                     Function* target_function= ci->getCalledFunction();
                     // errs()<<REDB"\nCalled Function: "<<target_function->getName()<<RST;
                     // if((*target_function).size()==0||isAnIgnorableDebugInstruction(target_function->getName().str(),"llvm.dbg"))
@@ -1474,7 +1473,6 @@ void Analysis<F,B>::doAnalysisBackward()
             errs()<<"\nNon-Exit Block";
             //step 6
             CS_BB_OUT[current_pair].second=getInitialisationValueBackward();
-
             //step 7 and 8
             for(auto succ_bb:successors(bb))
             {
@@ -1510,7 +1508,7 @@ void Analysis<F,B>::doAnalysisBackward()
                 // {
                 //     continue;//this is an inbuilt function so doesnt need to be processed.
                 // }
-                if((*target_function).size()==0||isAnIgnorableDebugInstruction(&I))
+                if((*target_function).size()==0 || isAnIgnorableDebugInstruction(&I))
                 {
                     continue;//this is an inbuilt function so doesnt need to be processed.
                 }
