@@ -670,12 +670,13 @@ void Analysis<F,B>::doAnalysis(Module &M)
         int iteration = 1;
         while (forward_worklist.size()>0)
         {
-            errs() << REDB << "\n--------------------------------------Start Iteration-" << iteration << "--------------------------------------\n";
+            // errs() << REDB << "\n--------------------------------------Start Iteration-" << iteration << "--------------------------------------\n";
             doAnalysisForward();
             forward_iteration_count++;
-            printContext();
-            errs() << REDB << "\n--------------------------------------End Iteration-" << iteration++ << "--------------------------------------\n";
+            // printContext();
+            // errs() << REDB << "\n--------------------------------------End Iteration-" << iteration++ << "--------------------------------------\n";
         }
+        printContext();
         errs()<<MAGENTAB"\nforward_iteration_count:"<<forward_iteration_count<<" FW size:"<<forward_worklist.size()<<RST;
     }
     else
@@ -774,6 +775,7 @@ void Analysis<F,B>::INIT_CONTEXT(pair<Function*,pair<pair<F,B>,pair<F,B>>> conte
 {
     Function &function=*(context_object.first);
     errs()<<REDB<<"\nInit Context called! for function: "<<function.getName()<<RST;
+    outs() << "\n";
     context_label_counter++;
     int current_context_label=context_label_counter;
     setProcessingContextLabel(current_context_label);
@@ -1081,7 +1083,7 @@ void Analysis<F,B>::doAnalysisForward()
         //step 5
         if(bb!=(&function.getEntryBlock()))
         {
-            errs()<<"\nNon-Entry Block";
+            errs()<<"\nNon-Entry Block\n";
             //step 6
             CS_BB_IN[current_pair].first=getInitialisationValueForward();
             
@@ -1096,7 +1098,7 @@ void Analysis<F,B>::doAnalysisForward()
         }
         else
         {
-            errs()<<"\nEntry Block";
+            errs()<<"\nEntry Block\n";
             //In value of this node is same as INFLOW value
             
             CS_BB_IN[current_pair].first=getForwardInflowForThisContext(current_context_label);
@@ -1107,6 +1109,7 @@ void Analysis<F,B>::doAnalysisForward()
         //step 9
         F a1=CS_BB_IN[current_pair].first;
         B d1=CS_BB_OUT[current_pair].second;
+        // printDataFlowValuesForward(a1);
 
         F previous_value_at_out_of_this_node=CS_BB_OUT[current_pair].first;
 
@@ -1189,10 +1192,14 @@ void Analysis<F,B>::doAnalysisForward()
                     matching_context_label=check_if_context_already_exists(new_context_object);
                     if(matching_context_label>0)//step 15
                     {
-                        errs()<<BLUEB"\nExisting context found! It has label:"<<matching_context_label<<RST;
+                        errs()<<BLUEB"\nExisting context found! It has label: "<<matching_context_label<<RST;
+                        outs() << "\n===================================FORWARD===========================================" << "\n";
+                        outs() << "INSTRUCTION: " << *inst << "\n";
                         //step 14
+                        outs() << "IN: ";
                         pair<int,Instruction*>mypair=make_pair(current_context_label,&(*inst));
                         context_transition_graph[mypair]=matching_context_label;
+                        printDataFlowValuesForward(context_label_to_context_object_map[matching_context_label].second.first.first);
 
                         //step 16 and 17
                         F a3=getForwardOutflowForThisContext(matching_context_label);
@@ -1237,12 +1244,16 @@ void Analysis<F,B>::doAnalysisForward()
                         
                         // prev=OUT[&(*inst)].first;
                         prev=getForwardComponentAtOutOfThisInstruction((*inst));
+                        outs() << "OUT: ";
+                        printDataFlowValuesForward(prev);
                         
                         // errs()<<WHITEB<<"\nNew Outflow after meet:"<<prev[0]<<RST;
                         //===========================================================
                     }
                     else//step 20
                     {
+                        errs() <<REDB"\n----------------------------------------------\n";
+                        errs() << MAGENTAB"CREATING A NEW CONTEXT!!!!!!!" << "\n";
                         //creating a new context
                         INIT_CONTEXT(new_context_object);//step 21
 
@@ -1250,6 +1261,9 @@ void Analysis<F,B>::doAnalysisForward()
                         //This step must be done after above step because context label counter gets updated after INIT-Context is invoked.
                         pair<int,Instruction*>mypair=make_pair(current_context_label,&(*inst));
                         context_transition_graph[mypair]=getContextLabelCounter();
+                        errs() << "LABEL:- " << context_label_counter << "\n";
+                        errs() << "INSTRUCTION:- " << *inst << "\n";
+                        errs() <<REDB"\n----------------------------------------------\n";
                         return;
                         //===========================================================
                         // OUT[&(*inst)].first=computeOutFromIn(*inst);
@@ -1259,13 +1273,20 @@ void Analysis<F,B>::doAnalysisForward()
                 }
                 else
                 {
-                    errs()<<"\n"<<*inst;
+                    outs() << "\n===================================FORWARD===========================================" << "\n";
+                    outs() << "INSTRUCTION: " << *inst << "\n";
                     // IN[&(*inst)].first=prev;//compute IN from previous OUT-value
+                    outs() << "IN: ";
+                    printDataFlowValuesForward(prev);
                     setForwardComponentAtInOfThisInstruction(&(*inst),prev);//compute IN from previous OUT-value
                     // OUT[&(*inst)].first=computeOutFromIn(*inst);
-                    setForwardComponentAtOutOfThisInstruction(&(*inst),computeOutFromIn(*inst));
+                    F new_prev = computeOutFromIn(*inst);
+                    setForwardComponentAtOutOfThisInstruction(&(*inst),new_prev);
+                    outs() << "OUT: ";
+                    printDataFlowValuesForward(new_prev);
                     // prev=OUT[&(*inst)].first;
                     prev=getForwardComponentAtOutOfThisInstruction(*inst);
+                    outs() << "\n===================================FORWARD===========================================" << "\n";
                 }
             }
             CS_BB_OUT[current_pair].first=prev;
@@ -1350,19 +1371,35 @@ void Analysis<F,B>::doAnalysisForward()
 template <class F,class B>
 F Analysis<F,B>::NormalFlowFunctionForward(pair<int,BasicBlock*> current_pair_of_context_label_and_bb)
 {
+    // outs() << "AYUSH" << "\n";
     BasicBlock &b=*(current_pair_of_context_label_and_bb.second);
     // setProcessingContextLabel(current_pair_of_context_label_and_bb.first);
     F prev=CS_BB_IN[current_pair_of_context_label_and_bb].first;
     //traverse a basic block in forward direction
     for(auto inst=&*(b.begin());inst!=NULL;inst=inst->getNextNonDebugInstruction())
     {
-        errs()<<"\n"<<*inst;
+        outs() << "\n===================================FORWARD===========================================" << "\n";
+        outs() << "INSTRUCTION: " << *inst << "\n";
+        // errs()<<"\n"<<*inst;
         // IN[&(*inst)].first=prev;//compute IN from previous OUT-value
+        outs() << "IN: ";
+        printDataFlowValuesForward(prev);
         setForwardComponentAtInOfThisInstruction(&(*inst),prev);//compute IN from previous OUT-value
         // OUT[&(*inst)].first=computeOutFromIn(*inst);
-        setForwardComponentAtOutOfThisInstruction(&(*inst),computeOutFromIn(*inst));
+        F new_prev = computeOutFromIn(*inst);
+        // outs() << new_prev.size();
+        // for(auto p : new_prev){
+        //     outs() << "VALUE IS: ";
+        //     outs() << "(";
+        //     outs() << p.first << "=" << p.second;
+        //     outs() << "),";
+        // }
+        setForwardComponentAtOutOfThisInstruction(&(*inst),new_prev);
+        outs() << "OUT: ";
+        printDataFlowValuesForward(new_prev);
         // prev=OUT[&(*inst)].first;
         prev=getForwardComponentAtOutOfThisInstruction(*inst);
+        outs() << "===================================FORWARD===========================================" << "\n";
     }
     return prev;
 }
@@ -1433,7 +1470,7 @@ int Analysis<F,B>::check_if_context_already_exists(pair<Function*,pair<pair<F,B>
         }
         errs()<<REDB<<"\nNO Matching Context found!"; 
     }
-    return false;
+    return 0;
 }
 
 template <class F,class B>
@@ -1579,9 +1616,11 @@ void Analysis<F,B>::doAnalysisBackward()
                     // errs()<<WHITEB<<"\nINFLOW:"<<prev[0];
                     int matching_context_label=0;
                     matching_context_label=check_if_context_already_exists(new_context_object);
+                    outs() << "MATCHING CONTEXT LABEL: ";
+                    outs() << matching_context_label << "\n";
                     if(matching_context_label>0)//step 15
                     {
-                        errs()<<BLUEB"\nExisting context found! It has label:"<<matching_context_label<<RST;
+                        errs()<<BLUEB"\nExisting context found!"<<matching_context_label<<RST;
                         //step 14
                         pair<int,Instruction*>mypair=make_pair(current_context_label,&(*inst));
                         context_transition_graph[mypair]=matching_context_label;
@@ -1650,7 +1689,7 @@ void Analysis<F,B>::doAnalysisBackward()
                         pair<int,Instruction*>mypair=make_pair(current_context_label,&(*inst));
                         //step 14
                         context_transition_graph[mypair]=context_label_counter;
-                        errs() << "LABEL:- " << mypair.first << "\n";
+                        errs() << "LABEL:- " << context_label_counter << "\n";
                         errs() << "INSTRUCTION:- " << *inst << "\n";
                         errs() <<REDB"\n----------------------------------------------\n";
                         return;
@@ -1662,7 +1701,7 @@ void Analysis<F,B>::doAnalysisBackward()
                 }
                 else
                 {
-                    errs()<<"\n"<<*inst;
+                    // errs() << CYANB <<"\n"<<*inst << "AYUSH";
                     // OUT[&(*inst)].second=prev;//compute OUT from previous IN-value
                     setBackwardComponentAtOutOfThisInstruction(&(*inst),prev);//compute OUT from previous IN-value
                     // IN[&(*inst)].second=computeInFromOut(*inst);
@@ -1768,18 +1807,32 @@ void Analysis<F,B>::doAnalysisBackward()
 template <class F,class B>
 B Analysis<F,B>::NormalFlowFunctionBackward(pair<int,BasicBlock*> current_pair_of_context_label_and_bb)
 {
+    outs() << "AYUSH" << "\n";
     BasicBlock &b=*(current_pair_of_context_label_and_bb.second);
     B prev=CS_BB_OUT[current_pair_of_context_label_and_bb].second;
+    F prev_f = CS_BB_OUT[current_pair_of_context_label_and_bb].first;
     //traverse a basic block in backward direction
     // for(auto inst=b.rbegin();inst!=b.rend();inst++)
     for(auto inst=&*(b.rbegin());inst!=NULL;inst=inst->getPrevNonDebugInstruction())
     {
-        errs()<<"\n"<<*inst;
+        outs() << "===================================BACKWARD===========================================" << "\n";
+        outs() << "INSTRUCTION: " << *inst << "\n";
+        // errs()<<"\n"<<*inst;
         // OUT[&(*inst)].second=prev;//compute OUT from previous IN-value
         setBackwardComponentAtOutOfThisInstruction(&(*inst),prev);//compute OUT from previous IN-value
         // IN[&(*inst)].second=computeInFromOut(*inst);
-        setBackwardComponentAtInOfThisInstruction(&(*inst),computeInFromOut(*inst));
+        outs() << "OUT: ";
+        outs() << "\n";
+        printDataFlowValuesForward(prev_f);
+        printDataFlowValuesBackward(prev);
+        outs() << "\n";
+        B new_dfv = computeInFromOut(*inst);
+        setBackwardComponentAtInOfThisInstruction(&(*inst),new_dfv);
         // prev=IN[&(*inst)].second;
+        outs() << "IN: " << "\n";
+        printDataFlowValuesForward(prev_f);
+        printDataFlowValuesBackward(new_dfv);
+        outs() << "\n";
         prev=getBackwardComponentAtInOfThisInstruction(*inst);
         // errs()<<MAGENTAB"\nnormal prev:";
         // for(auto x:prev)
@@ -1788,6 +1841,7 @@ B Analysis<F,B>::NormalFlowFunctionBackward(pair<int,BasicBlock*> current_pair_o
         // }
         // errs()<<"\n";
         // errs()<<RST;
+        outs() << "===================================BACKWARD===========================================" << "\n";
     }
     return prev;
 }
@@ -2078,19 +2132,20 @@ void Analysis<F,B>::drawSuperGraph(Module &M)
 
 template <class F,class B>
 void Analysis<F,B>::printContext() {
-    cout << endl;
+    outs() << "\n";
     for(auto val : context_label_to_context_object_map) {
-        cout << "LABEL: " << val.first << " ";
-        cout << "FUNCTION NAME: " << val.second.first->getName().str() << " ";
-        cout << "INFLOW VALUE: " << " ";
+        outs() << "LABEL: " << val.first << " ";
+        outs() << "FUNCTION NAME: " << val.second.first->getName().str() << " ";
+        outs() << "INFLOW VALUE: " << " ";
         // cout << "< ";
         printDataFlowValuesForward(val.second.second.first.first);
         // cout << ",";
         printDataFlowValuesBackward(val.second.second.first.second);
         // cout << " >";
-        cout << "OUTFLOW VALUE: " << " ";
+        outs() << "OUTFLOW VALUE: " << " ";
         printDataFlowValuesForward(val.second.second.second.first);
         printDataFlowValuesBackward(val.second.second.second.second);
+        outs() << "\n";
     }
 }
 
