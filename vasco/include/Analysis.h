@@ -16,7 +16,6 @@
 #include <set>
 #include <fstream>
 #include <iostream>
-// #include <bprinter/table_printer.h>
 
 #define RST "\033[0;m"
 #define BLACKB "\033[1;90m"
@@ -28,14 +27,6 @@
 #define CYANB "\033[1;96m"
 #define WHITEB "\033[1;97m"
 
-// #define BLACK "\u001b[;30m"
-// #define RED: "\u001b[;31m"
-// #define GREEN: "\u001b[;32m"
-// #define YELLOW: "\u001b[;33m"
-// #define BLUE: "\u001b[;34m"
-// #define MAGENTA: "\u001b[;35m"
-// #define CYAN: "\u001b[;36m"
-// #define WHITE: "\u001b[;37m"
 using namespace llvm;
 using namespace std;
 enum NoAnalysisType {NoAnalyisInThisDirection};
@@ -144,9 +135,6 @@ class Analysis
 
     virtual pair<F,B> CallInflowFunction(int,Function*,BasicBlock*,F,B);
     virtual pair<F,B> CallOutflowFunction(int,Function*,BasicBlock*,F,B,F,B);
-
-    //pair<F,B> CallInflowFunction(int,Function*,BasicBlock*,F,B);
-    //pair<F,B> CallOutflowFunction(int,Function*,BasicBlock*,F,B);
 
 
     virtual void printResults(){}
@@ -257,18 +245,6 @@ void Analysis<F,B>::setCurrentModule(Module *m)
 {
     current_module=m;
 }
-
-// template <class F,class B>
-// void Analysis<F,B>::printDataFlowValuesForward(F dfv)
-// {
-    
-// }
-
-// template <class F,class B>
-// void Analysis<F,B>::printDataFlowValuesBackward(F dfv)
-// {
-    
-// }
 
 template <class F,class B>
 B Analysis<F,B>::computeInFromOut(Instruction &I)
@@ -417,21 +393,6 @@ pair<F,B> Analysis<F,B>::CallInflowFunction(int context_label,Function* target_f
 {
     errs()<<"\nThis function CallInflowFunction() has not been implemented. EXITING !!\n";
     exit(-1);
-    // F a2;
-    // B d2;
-    // if(0==getCurrentAnalysisDirection()||2==getCurrentAnalysisDirection())
-    // {
-    //     a2=a1;
-    //     d2=getPurelyLocalComponentBackward(d1);
-    // }
-    // else
-    // {
-    //     a2=getPurelyGlobalComponentForward(a1);
-    //     d2=d1;
-    // }
-    // // F a2=getPurelyGlobalComponentForward(a1);
-    // // B d2=d1;
-    // return make_pair(a2,d2);
 }
 
 template<class F,class B>
@@ -439,23 +400,6 @@ pair<F,B> Analysis<F,B>::CallOutflowFunction(int context_label,Function* target_
 {
     errs()<<"\nThis function CallOutflowFunction() has not been implemented. EXITING !!\n";
     exit(-1);
-    // F a4;
-    // B d4;
-    // if(0==getCurrentAnalysisDirection()||2==getCurrentAnalysisDirection())
-    // {
-    //     //backward
-    //     a4=a3;
-    //     d4=getPurelyGlobalComponentBackward(d3);
-    // }
-    // else
-    // {
-    //     //forward 
-    //     a4=getPurelyGlobalComponentForward(a4);
-    //     d4=d3;
-    // }
-    // // F a4=a3;
-    // // B d4=getPurelyGlobalComponentBackward(d3);
-    // return make_pair(a4,d4);
 }
 
 //=====================setter and getters for IN-OUT Maps==================================
@@ -1194,7 +1138,7 @@ void Analysis<F,B>::doAnalysisForward()
                     {
                         errs()<<BLUEB"\nExisting context found! It has label: "<<matching_context_label<<RST;
                         outs() << "\n===================================FORWARD===========================================" << "\n";
-                        outs() << "INSTRUCTION: " << *inst << "\n";
+                        outs() << *inst << "\n";
                         //step 14
                         outs() << "IN: ";
                         pair<int,Instruction*>mypair=make_pair(current_context_label,&(*inst));
@@ -1274,7 +1218,7 @@ void Analysis<F,B>::doAnalysisForward()
                 else
                 {
                     outs() << "\n===================================FORWARD===========================================" << "\n";
-                    outs() << "INSTRUCTION: " << *inst << "\n";
+                    outs() << *inst << "\n";
                     // IN[&(*inst)].first=prev;//compute IN from previous OUT-value
                     outs() << "IN: ";
                     printDataFlowValuesForward(prev);
@@ -1379,7 +1323,7 @@ F Analysis<F,B>::NormalFlowFunctionForward(pair<int,BasicBlock*> current_pair_of
     for(auto inst=&*(b.begin());inst!=NULL;inst=inst->getNextNonDebugInstruction())
     {
         outs() << "\n===================================FORWARD===========================================" << "\n";
-        outs() << "INSTRUCTION: " << *inst << "\n";
+        outs() << *inst << "\n";
         // errs()<<"\n"<<*inst;
         // IN[&(*inst)].first=prev;//compute IN from previous OUT-value
         outs() << "IN: ";
