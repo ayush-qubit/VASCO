@@ -144,7 +144,7 @@ class Analysis
     virtual F getInitialisationValueForward();//{}
     virtual F performMeetForward(F d1,F d2);//{}
     virtual bool EqualDataFlowValuesForward(F d1,F d2);//{}
-    // virtual F getPurelyLocalComponentForward(F dfv);
+    virtual F getPurelyLocalComponentForward(F dfv);
     virtual F getPurelyGlobalComponentForward(F dfv);
     // virtual F getMixedComponentForward(F dfv);
     // virtual F getCombinedValuesAtCallForward(F dfv1,F dfv2);
@@ -320,6 +320,13 @@ F Analysis<F,B>::getPurelyGlobalComponentForward(F dfv)
 {
     errs()<<"\nThis function getPurelyGlobalComponentForward() has not been implemented. EXITING !!\n";
     exit(-1);
+}
+
+template <class F,class B>
+F Analysis<F,B>::getPurelyLocalComponentForward(F dfv)
+{
+    errs()<<"\nThis function getPurelyLocalComponentForward() has not been implemented. EXITING !!\n";
+    exit(-1);  
 }
 /*
 template <class F,class B>
@@ -1129,6 +1136,7 @@ void Analysis<F,B>::doAnalysisForward()
                     //===========================================================
                     // IN[&(*inst)].first=prev;//compute IN from previous OUT-value
                     setForwardComponentAtInOfThisInstruction(&(*inst),prev);//compute IN from previous OUT-value
+                    // setForwardComponentAtOutOfThisInstruction(&(*inst),getPurelyLocalComponentForward(prev));
                     //===========================================================
                     // errs()<<WHITEB<<"\nINFLOW:"<<prev[0];
                     
@@ -1143,7 +1151,8 @@ void Analysis<F,B>::doAnalysisForward()
                         outs() << "IN: ";
                         pair<int,Instruction*>mypair=make_pair(current_context_label,&(*inst));
                         context_transition_graph[mypair]=matching_context_label;
-                        printDataFlowValuesForward(context_label_to_context_object_map[matching_context_label].second.first.first);
+                        // printDataFlowValuesForward(context_label_to_context_object_map[matching_context_label].second.first.first);
+                        printDataFlowValuesForward(a1);
 
                         //step 16 and 17
                         F a3=getForwardOutflowForThisContext(matching_context_label);
@@ -1169,6 +1178,7 @@ void Analysis<F,B>::doAnalysisForward()
                         */
                         
                         // F value_to_be_propagated_to_out_of_instruction=computeOutFromIn(*inst);//a5
+                        F a5 = getPurelyLocalComponentForward(a1);
                         
                         /*
                         At the OUT of this instruction, the value from END of callee procedure is to be merged
@@ -1182,9 +1192,11 @@ void Analysis<F,B>::doAnalysisForward()
                         As explained in ip-vasco,pdf, we need to perform meet with the original value of OUT
                         of this instruction to avoid the oscillation problem.
                         */
-                        
-                        
-                        setForwardComponentAtOutOfThisInstruction(&(*inst),performMeetForward(value_to_be_meet_with_prev_out,getForwardComponentAtOutOfThisInstruction(*inst)));
+                        // outs() << "a4: ";
+                        // printDataFlowValuesForward(value_to_be_meet_with_prev_out);
+                        // outs() << "PREV OUT: ";
+                        // printDataFlowValuesForward(getForwardComponentAtOutOfThisInstruction((*inst)));
+                        setForwardComponentAtOutOfThisInstruction(&(*inst),performMeetForward(performMeetForward(value_to_be_meet_with_prev_out,getForwardComponentAtOutOfThisInstruction(*inst)),a5));
                         
                         // prev=OUT[&(*inst)].first;
                         prev=getForwardComponentAtOutOfThisInstruction((*inst));
