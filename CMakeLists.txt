@@ -1,6 +1,6 @@
 cmake_minimum_required(VERSION 3.16)
 project(vasco)
-set(LLVM_ROOT "/usr/lib/llvm-12" CACHE PATH "/usr/lib/llvm-12")
+set(LLVM_ROOT "/usr/lib/llvm-10" CACHE PATH "/usr/lib/llvm-10")
 
 list(APPEND CMAKE_PREFIX_PATH "${LLVM_ROOT}/share/llvm/cmake")
 find_package(LLVM REQUIRED 10.0.0)
