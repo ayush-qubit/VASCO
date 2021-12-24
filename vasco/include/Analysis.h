@@ -170,7 +170,7 @@ class Analysis
     
     // void printInOutMapsBackward(Function &function);
     // void printInOutMapsForward(Function &function);
-    virtual void printInOutMaps(){}
+    void printInOutMaps();
     virtual void printForwardWorklist(){}
     virtual void printBackwardWorklist(){}
     
@@ -2156,6 +2156,16 @@ void Analysis<F,B>::printContext() {
         printDataFlowValuesForward(val.second.second.second.first);
         printDataFlowValuesBackward(val.second.second.second.second);
         llvm::outs() << "\n";
+    }
+}
+
+template <class F,class B>
+void Analysis<F,B>::printInOutMaps() {
+    llvm::outs() << "Printing IN-OUT maps:-\n";
+    for(auto p : IN){
+        llvm::outs() << p.first.first << " : ";
+        llvm::outs() << *p.first.second << " -> ";
+        printDataFlowValuesForward(p.second.first);
     }
 }
 
