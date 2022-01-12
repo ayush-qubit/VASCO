@@ -57,6 +57,7 @@ class Analysis
     int processing_context_label;
     std::unordered_map<pair<int,Instruction*>,pair<F,B>,HashFunction> IN, OUT;
     std::unordered_map<int,bool> isFree;
+    std::string direction;
 
     //mapping from context label to context object
 //    map<int,pair<Function*,pair<pair<F,B>,pair<F,B>>>>context_label_to_context_object_map;
@@ -210,6 +211,7 @@ Analysis<F,B>::Analysis(bool debug){
     context_label_counter=-1;
     this->debug = debug;
     this->out = &llvm::outs();
+    this->direction = "";
 }
 
 template<class F,class B>
@@ -219,6 +221,7 @@ Analysis<F,B>::Analysis(bool debug,string fileName){
     this->debug = debug;
     freopen(fileName.c_str(),"w",stdout);
     this->out = &llvm::outs();
+    this->direction = "";
 }
 
 template<class F,class B>
@@ -660,6 +663,7 @@ void Analysis<F,B>::doAnalysis(Module &M)
     if(std::is_same<F, NoAnalysisType>::value)
     {
         //backward analysis
+        direction = "backward";
         setCurrentAnalysisDirection(2);
         int backward_iteration_count=0;
         int iteration = 1;
@@ -672,6 +676,8 @@ void Analysis<F,B>::doAnalysis(Module &M)
     else if(std::is_same<B, NoAnalysisType>::value)
     {
         //forward analysis
+        direction = "forward";
+        direction = "bidirectional";
         setCurrentAnalysisDirection(1);
         int forward_iteration_count=0;
         int iteration = 1;
@@ -683,6 +689,7 @@ void Analysis<F,B>::doAnalysis(Module &M)
     }
     else
     {
+        direction = "bidirectional";
 //        int fi=1,bi=1;
 //        int iteration = 1;
 //        while (forward_worklist.size()>0||backward_worklist.size()>0)
@@ -1288,10 +1295,12 @@ void Analysis<F,B>::doAnalysisForward()
                     forward_worklist.push(make_pair(current_context_label,succ_bb));
                     forward_worklist_contains_this_entry[make_pair(current_context_label,succ_bb)]=true;
                 }
-                if(!backward_worklist_contains_this_entry[make_pair(current_context_label,succ_bb)])
-                {
-                    backward_worklist.push(make_pair(current_context_label,succ_bb));
-                    backward_worklist_contains_this_entry[make_pair(current_context_label,succ_bb)]=true;
+                if(direction == "bidirectional"){
+                    if(!backward_worklist_contains_this_entry[make_pair(current_context_label,succ_bb)])
+                    {
+                        backward_worklist.push(make_pair(current_context_label,succ_bb));
+                        backward_worklist_contains_this_entry[make_pair(current_context_label,succ_bb)]=true;
+                    }
                 }
             }
 
@@ -1311,18 +1320,17 @@ void Analysis<F,B>::doAnalysisForward()
                     //step 30
                     BasicBlock *bb=context_inst_pairs.first.second->getParent();
                     pair<int,BasicBlock*>context_bb_pair=make_pair(context_inst_pairs.first.first,bb);
-                    if(context_inst_pairs.first.first == current_context_label){
-                        continue;
-                    }
                     if(!forward_worklist_contains_this_entry[context_bb_pair])
                     {
                         forward_worklist.push(context_bb_pair);
                         forward_worklist_contains_this_entry[context_bb_pair]=true;
                     }
-                    if(!backward_worklist_contains_this_entry[context_bb_pair])
-                    {
-                        backward_worklist.push(context_bb_pair);
-                        backward_worklist_contains_this_entry[context_bb_pair]=true;
+                    if(direction == "bidirectional"){
+                        if(!backward_worklist_contains_this_entry[context_bb_pair])
+                        {
+                            backward_worklist.push(context_bb_pair);
+                            backward_worklist_contains_this_entry[context_bb_pair]=true;
+                        }
                     }
                 }
                 if(context_inst_pairs.first.first == current_context_label){
