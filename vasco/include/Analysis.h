@@ -677,7 +677,6 @@ void Analysis<F,B>::doAnalysis(Module &M)
     {
         //forward analysis
         direction = "forward";
-        direction = "bidirectional";
         setCurrentAnalysisDirection(1);
         int forward_iteration_count=0;
         int iteration = 1;
