@@ -19,6 +19,9 @@
 #include <unordered_map>
 #include <unordered_set>
 #include <ostream>
+#include <unistd.h>
+#include <ios>
+#include <iomanip>
 
 #include "Context.h"
 
@@ -29,6 +32,49 @@
 using namespace llvm;
 using namespace std;
 enum NoAnalysisType {NoAnalyisInThisDirection};
+
+void process_mem_usage(float& vm_usage, float& resident_set)
+{
+    using std::ios_base;
+    using std::ifstream;
+    using std::string;
+
+    vm_usage     = 0.0;
+    resident_set = 0.0;
+
+    // 'file' stat seems to give the most reliable results
+    //
+    ifstream stat_stream("/proc/self/stat",ios_base::in);
+
+    // dummy vars for leading entries in stat that we don't care about
+    //
+    string pid, comm, state, ppid, pgrp, session, tty_nr;
+    string tpgid, flags, minflt, cminflt, majflt, cmajflt;
+    string utime, stime, cutime, cstime, priority, nice;
+    string O, itrealvalue, starttime;
+
+    // the two fields we want
+    //
+    unsigned long vsize;
+    long rss;
+
+    stat_stream >> pid >> comm >> state >> ppid >> pgrp >> session >> tty_nr
+                >> tpgid >> flags >> minflt >> cminflt >> majflt >> cmajflt
+                >> utime >> stime >> cutime >> cstime >> priority >> nice
+                >> O >> itrealvalue >> starttime >> vsize >> rss; // don't care about the rest
+
+    stat_stream.close();
+    long page_size_kb = sysconf(_SC_PAGE_SIZE) / 1024; // in case x86-64 is configured to use 2MB pages
+    vm_usage     = vsize / 1024.0;
+    resident_set = rss * page_size_kb;
+}
+
+void printMemory(float memory){
+    cout << fixed;
+    cout<< setprecision(6);
+    cout << memory/1024.0;
+    cout << " MB\n";
+}
 
 class HashFunction{
 public:
@@ -73,6 +119,8 @@ class Analysis
 //    map<Context<F,B>,int> context_object_to_context_label_map;
     bool debug;
 
+    float total_memory,vm,rss;
+
     void printLine(int);
 	
     protected:
@@ -93,10 +141,10 @@ class Analysis
 
     // mapping from (context label,call site) to target context label
     unordered_map<pair<int,Instruction*>,int,HashFunction> context_transition_graph; //graph
-    raw_ostream *out;
     public:
     Analysis(bool);
     Analysis(bool,string);
+    ~Analysis();
 	int getContextLabelCounter();
     void setContextLabelCounter(int);
     int getCurrentAnalysisDirection();
@@ -218,8 +266,8 @@ Analysis<F,B>::Analysis(bool debug){
     current_module=nullptr;
     context_label_counter=-1;
     this->debug = debug;
-    this->out = &llvm::outs();
     this->direction = "";
+    this->total_memory = 0.0;
 }
 
 template<class F,class B>
@@ -228,8 +276,14 @@ Analysis<F,B>::Analysis(bool debug,string fileName){
     context_label_counter=-1;
     this->debug = debug;
     freopen(fileName.c_str(),"w",stdout);
-    this->out = &llvm::outs();
     this->direction = "";
+    this->total_memory = 0.0;
+}
+
+template<class F,class B>
+Analysis<F,B>::~Analysis<F, B>() {
+    llvm::outs() << "Memory consume: ";
+    printMemory(this->total_memory);
 }
 
 template<class F,class B>
@@ -863,7 +917,8 @@ void Analysis<F,B>::INIT_CONTEXT(llvm::Function *function, std::pair<F,B> Inflow
     } else{
         // Todo for Bidirectional Analysis
     }
-
+    process_mem_usage(vm, rss);
+    this->total_memory = std::max(vm,this->total_memory);
 }
 //pair<Function*,pair<pair<F,B>,pair<F,B>>> context_object
 //template <class F,class B>
@@ -1397,6 +1452,8 @@ void Analysis<F,B>::doAnalysisForward()
 //                freeMemory(current_context_label);
             }
         }
+        process_mem_usage(vm, rss);
+        this->total_memory = std::max(vm,this->total_memory);
     }
 }
 
@@ -1440,6 +1497,8 @@ int Analysis<F,B>::check_if_context_already_exists(llvm::Function *function, pai
             Context<F,B> *current_object = context_label_to_context_object_map[set_itr];
             F new_context_values = Inflow.first;
             F current_context_values = current_object->getInflowValue().first;
+            process_mem_usage(vm, rss);
+            this->total_memory = std::max(vm,this->total_memory);
             if(function->getName() == current_object->getFunction()->getName() && EqualDataFlowValuesForward(new_context_values,current_context_values)){
                 if(debug){
                     llvm::outs() << "======================================================================================" << "\n";
