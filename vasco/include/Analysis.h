@@ -614,32 +614,38 @@ void Analysis<F,B>::setBackwardComponentAtOutOfThisInstruction(Instruction *I,B 
 template<class F,class B>
 pair<F,B> Analysis<F,B>::getIn(int label, llvm::BasicBlock *BB) {
 //    return IN[{label,&(*BB->begin())}];
-    return CS_BB_IN[label][BB];
+//    return CS_BB_IN[label][BB];
+    return IN[label][&(*(BB->begin()))];
 }
 
 template<class F,class B>
 pair<F,B> Analysis<F,B>::getOut(int label, llvm::BasicBlock *BB) {
-    return CS_BB_OUT[label][BB];
+//    return CS_BB_OUT[label][BB];
+    return OUT[label][&(BB->back())];
 }
 
 template<class F, class B>
 void Analysis<F,B>::setForwardIn(int label, llvm::BasicBlock *BB, F dataflowvalue) {
-    CS_BB_IN[label][BB].first = dataflowvalue;
+    IN[label][&(*(BB->begin()))].first = dataflowvalue;
+//    CS_BB_IN[label][BB].first = dataflowvalue;
 }
 
 template<class F, class B>
 void Analysis<F,B>::setForwardOut(int label, llvm::BasicBlock *BB, F dataflowvalue) {
-    CS_BB_OUT[label][BB].first = dataflowvalue;
+    OUT[label][&(BB->back())].first = dataflowvalue;
+//    CS_BB_OUT[label][BB].first = dataflowvalue;
 }
 
 template<class F, class B>
 void Analysis<F,B>::setBackwardIn(int label, llvm::BasicBlock * BB, B dataflowvalue) {
-    CS_BB_IN[label][BB].second = dataflowvalue;
+    IN[label][&(*(BB->begin()))].second = dataflowvalue;
+//    CS_BB_IN[label][BB].second = dataflowvalue;
 }
 
 template<class F, class B>
 void Analysis<F,B>::setBackwardOut(int label, llvm::BasicBlock * BB, B dataflowvalue) {
-    CS_BB_OUT[label][BB].second = dataflowvalue;
+    OUT[label][&(BB->back())].second = dataflowvalue;
+//    CS_BB_OUT[label][BB].second = dataflowvalue;
 }
 
 //=================================================================================
