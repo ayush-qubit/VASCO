@@ -19,6 +19,9 @@
 #include <unordered_map>
 #include <unordered_set>
 #include <ostream>
+#include <unistd.h>
+#include <ios>
+#include <iomanip>
 
 #include "Context.h"
 
@@ -29,6 +32,49 @@
 using namespace llvm;
 using namespace std;
 enum NoAnalysisType {NoAnalyisInThisDirection};
+
+void process_mem_usage(float& vm_usage, float& resident_set)
+{
+    using std::ios_base;
+    using std::ifstream;
+    using std::string;
+
+    vm_usage     = 0.0;
+    resident_set = 0.0;
+
+    // 'file' stat seems to give the most reliable results
+    //
+    ifstream stat_stream("/proc/self/stat",ios_base::in);
+
+    // dummy vars for leading entries in stat that we don't care about
+    //
+    string pid, comm, state, ppid, pgrp, session, tty_nr;
+    string tpgid, flags, minflt, cminflt, majflt, cmajflt;
+    string utime, stime, cutime, cstime, priority, nice;
+    string O, itrealvalue, starttime;
+
+    // the two fields we want
+    //
+    unsigned long vsize;
+    long rss;
+
+    stat_stream >> pid >> comm >> state >> ppid >> pgrp >> session >> tty_nr
+                >> tpgid >> flags >> minflt >> cminflt >> majflt >> cmajflt
+                >> utime >> stime >> cutime >> cstime >> priority >> nice
+                >> O >> itrealvalue >> starttime >> vsize >> rss; // don't care about the rest
+
+    stat_stream.close();
+    long page_size_kb = sysconf(_SC_PAGE_SIZE) / 1024; // in case x86-64 is configured to use 2MB pages
+    vm_usage     = vsize / 1024.0;
+    resident_set = rss * page_size_kb;
+}
+
+void printMemory(float memory){
+    cout << fixed;
+    cout<< setprecision(6);
+    cout << memory/1024.0;
+    cout << " MB\n";
+}
 
 class HashFunction{
 public:
@@ -71,6 +117,7 @@ class Analysis
 //    map<pair<Function*,pair<pair<F,B>,pair<F,B>>>,int>context_object_to_context_label_map;
 //    map<Context<F,B>,int> context_object_to_context_label_map;
     bool debug;
+    float total_memory,vm,rss;
 
     void printLine(int);
 	
@@ -95,6 +142,7 @@ class Analysis
     public:
     Analysis(bool);
     Analysis(bool,string);
+    ~Analysis();
 	int getContextLabelCounter();
     void setContextLabelCounter(int);
     int getCurrentAnalysisDirection();
@@ -226,6 +274,12 @@ Analysis<F,B>::Analysis(bool debug,string fileName){
     this->debug = debug;
     freopen(fileName.c_str(),"w",stdout);
     this->direction = "";
+}
+
+template<class F,class B>
+Analysis<F,B>::~Analysis(){
+    llvm::outs() << "Memory consume: ";
+    printMemory(this->total_memory);
 }
 
 template<class F,class B>
@@ -819,6 +873,8 @@ void Analysis<F,B>::INIT_CONTEXT(llvm::Function *function, std::pair<F,B> Inflow
     } else{
         // Todo for Bidirectional Analysis
     }
+    process_mem_usage(this->vm,this->rss);
+    this->total_memory = max(this->total_memory,this->vm);
 
 }
 //pair<Function*,pair<pair<F,B>,pair<F,B>>> context_object
@@ -1413,6 +1469,8 @@ int Analysis<F,B>::check_if_context_already_exists(llvm::Function *function, pai
             Context<F,B> current_object= context_label_to_context_object_map[set_itr];
             B new_context_values= Inflow.second;
             B current_context_values= current_object.getInflowValue().second;
+            process_mem_usage(this->vm,this->rss);
+            this->total_memory = max(this->total_memory,this->vm);
             if(function->getName() == current_object.getFunction()->getName() && EqualDataFlowValuesBackward(new_context_values,current_context_values))
             {
                 if(debug){
@@ -1502,7 +1560,7 @@ void Analysis<F,B>::doAnalysisBackward()
     while(!backward_worklist.empty())//step 2
     {
         //step 3 and 4
-        pair<int,BasicBlock*> current_pair=backward_worklist.top();
+        pair<int,BasicBlock*> current_pair = backward_worklist.top();
         int current_context_label;
         BasicBlock *bb;
         current_context_label=backward_worklist.top().first;
@@ -1524,6 +1582,7 @@ void Analysis<F,B>::doAnalysisBackward()
             //step 7 and 8
             for(auto succ_bb:successors(bb))
             {
+                llvm::outs() << "Setting backward OUT of successors!!!!!!";
                 setBackwardOut(
                         current_pair.first,
                         current_pair.second,
@@ -1532,6 +1591,7 @@ void Analysis<F,B>::doAnalysisBackward()
                                 getIn(current_pair.first,succ_bb).second
                                 )
                         );
+                printDataFlowValuesBackward(getOut(current_pair.first,current_pair.second).second);
 //                CS_BB_OUT[current_pair].second=performMeetBackward(CS_BB_OUT[current_pair].second,CS_BB_IN[make_pair(current_pair.first,succ_bb)].second);
             }
         }
@@ -1592,7 +1652,7 @@ void Analysis<F,B>::doAnalysisBackward()
                     The purely global component is given to the end of callee.
                     */
                     //step 12
-                    pair<F,B> inflow_pair = CallInflowFunction(current_context_label,target_function,bb,a1,d1);
+                    pair<F,B> inflow_pair = CallInflowFunction(current_context_label,target_function,bb,a1,prev);
                     F a2 = inflow_pair.first;
                     B d2 = inflow_pair.second;
 
@@ -1759,6 +1819,8 @@ void Analysis<F,B>::doAnalysisBackward()
                 }
             }
         }
+        process_mem_usage(this->vm,this->rss);
+        this->total_memory = max(this->total_memory,this->vm);
     }
 }
 
@@ -1875,7 +1937,7 @@ void Analysis<F,B>::performSplittingBB(Function &function)
         containingBB=split_here.first->getParent();
         containingBB->splitBasicBlock(split_here.first);
     }
-    
+    // function.viewCFG();
 }
 
 template<class F,class B>
