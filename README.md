@@ -3,4 +3,4 @@ VASCO is a framework for performing precise inter-procedural data flow analysis 
 
 # Install instruction
 
-Run *./install.sh* in the project directory
+Run ```./install.sh``` in the project directory
