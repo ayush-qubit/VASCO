@@ -5,88 +5,104 @@
 #ifndef VASCO_CONTEXT_H
 #define VASCO_CONTEXT_H
 
+#include <iostream>
+#include <iomanip>
 #include <utility>
 #include "llvm/IR/Function.h"
 
-template<class F,class B>
-class Context{
+// # define db(msg) {std::cout << std::fixed << "DEBUG [" << std::setw(4) << std::right << __LINE__ << "]: " << msg << std::endl; std::cout.flush();}
+# define db(msg) {;}
+
+template<class F, class B>
+class Context {
 private:
     int label;
-    std::pair<F,B> Inflow,Outflow;
+    std::pair<F, B> Inflow, Outflow;
     llvm::Function *function;
 public:
-    Context(){
+    Context() {
         this->label = -1;
         this->function = nullptr;
         this->Inflow = {};
         this->Outflow = {};
     }
-    Context(int label,llvm::Function *function,std::pair<F,B> Inflow,std::pair<F,B> Outflow){
+
+    Context(int label, llvm::Function *function, std::pair<F, B> Inflow, std::pair<F, B> Outflow) {
         this->Inflow = Inflow;
         this->Outflow = Outflow;
         this->label = label;
         this->function = function;
     }
-    void setInflowvalue(std::pair<F,B>);
-    void setOutflowValue(std::pair<F,B>);
+
+    void setInflowvalue(std::pair<F, B>);
+
+    void setOutflowValue(std::pair<F, B>);
+
     void setForwardInflow(F);
+
     void setForwardOutflow(F);
+
     void setBackwardInflow(B);
+
     void setBackwardOutflow(B);
-    int getLabel();
-    std::pair<F,B> getInflowValue();
-    std::pair<F,B> getOutflowValue();
-    llvm::Function * getFunction();
+
+    int getLabel() const;
+
+    std::pair<F, B> getInflowValue() const;
+
+    std::pair<F, B> getOutflowValue() const;
+
+    llvm::Function *getFunction();
 };
 
 
 template<class F, class B>
-void Context<F,B>::setInflowvalue(std::pair<F, B> Inflow) {
+void Context<F, B>::setInflowvalue(std::pair<F, B> Inflow) {
     this->Inflow = Inflow;
 }
 
 template<class F, class B>
-void Context<F,B>::setOutflowValue(std::pair<F, B> Outflow) {
+void Context<F, B>::setOutflowValue(std::pair<F, B> Outflow) {
     this->Outflow = Outflow;
 }
 
 template<class F, class B>
-void Context<F,B>::setForwardInflow(F value) {
+void Context<F, B>::setForwardInflow(F value) {
     this->Inflow.first = value;
 }
 
 template<class F, class B>
-void Context<F,B>::setForwardOutflow(F value) {
+void Context<F, B>::setForwardOutflow(F value) {
     this->Outflow.first = value;
 }
 
-template<class F,class B>
-void Context<F,B>::setBackwardInflow(B value) {
+template<class F, class B>
+void Context<F, B>::setBackwardInflow(B value) {
     this->Inflow.second = value;
 }
 
-template<class F,class B>
-void Context<F,B>::setBackwardOutflow(B value) {
+template<class F, class B>
+void Context<F, B>::setBackwardOutflow(B value) {
     this->Outflow.second = value;
 }
 
 template<class F, class B>
-int Context<F,B>::getLabel() {
+int Context<F, B>::getLabel() const {
     return this->label;
 }
 
 template<class F, class B>
-std::pair<F,B> Context<F,B>::getInflowValue() {
+std::pair<F, B> Context<F, B>::getInflowValue() const {
     return this->Inflow;
 }
 
 template<class F, class B>
-std::pair<F,B> Context<F,B>::getOutflowValue() {
+std::pair<F, B> Context<F, B>::getOutflowValue() const {
     return this->Outflow;
 }
 
 template<class F, class B>
-llvm::Function * Context<F,B>::getFunction() {
+llvm::Function *Context<F, B>::getFunction() {
     return this->function;
 }
 
