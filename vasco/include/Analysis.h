@@ -334,15 +334,10 @@ Analysis<F, B>::Analysis(bool debug) {
 
 template<class F, class B>
 Analysis<F, B>::Analysis(bool debug, const string &fileName) {
-    db("4.2")
     current_module = nullptr;
     context_label_counter = -1;
     this->debug = debug;
-    db("4.21")
-    db(fileName)
-    db(fileName.c_str())
     freopen(fileName.c_str(), "w", stdout);
-    db("4.3")
     this->direction = "";
 }
 
@@ -1597,7 +1592,6 @@ void Analysis<F, B>::doAnalysisBackward() {
 //            CS_BB_OUT[current_pair].second=getInitialisationValueBackward();
             //step 7 and 8
             for (auto succ_bb:successors(bb)) {
-                llvm::outs() << "Setting backward OUT of successors!!!!!!";
                 setBackwardOut(
                         current_pair.first,
                         current_pair.second,
@@ -1632,7 +1626,7 @@ void Analysis<F, B>::doAnalysisBackward() {
             Instruction &I = *inst;
             if (CallInst *ci = dyn_cast<CallInst>(&I)) {
                 Function *target_function = ci->getCalledFunction();
-                if (not target_function || (*target_function).size() == 0 || isAnIgnorableDebugInstruction(&I)) {
+                if (not target_function || target_function->isDeclaration() || isAnIgnorableDebugInstruction(&I)) {
                     continue;//this is an inbuilt function so doesnt need to be processed.
                 }
                 // contains_a_method_call=true;
@@ -1649,7 +1643,7 @@ void Analysis<F, B>::doAnalysisBackward() {
                 if (CallInst *ci = dyn_cast<CallInst>(&I)) {
 
                     Function *target_function = ci->getCalledFunction();
-                    if (not target_function || (*target_function).size() == 0 || isAnIgnorableDebugInstruction(&I)) {
+                    if (not target_function || target_function->isDeclaration() || isAnIgnorableDebugInstruction(&I)) {
                         continue;
                     }
 
