@@ -11,9 +11,8 @@
 #include "llvm/IR/Function.h"
 
 // # define db(msg) {std::cout << std::fixed << "DEBUG [" << std::setw(4) << std::right << __LINE__ << "]: " << msg << std::endl; std::cout.flush();}
-# define db(msg) {;}
 
-template<class F, class B>
+template<typename F, typename B>
 class Context {
 private:
     int label;

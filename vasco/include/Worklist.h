@@ -33,7 +33,4 @@ public:
     }
 };
 
-
-
-
 #endif //COPYCONSTANTPROPAGATION_WORKLIST_H

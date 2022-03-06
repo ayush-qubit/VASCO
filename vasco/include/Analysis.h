@@ -28,11 +28,6 @@
 #include "Context.h"
 #include "Worklist.h"
 
-
-#define RST "\033[0;m"
-#define REDB "\033[1;91m"
-#define WHITEB "\033[1;97m"
-
 using namespace llvm;
 using namespace std;
 using namespace std::chrono;
@@ -120,22 +115,15 @@ private:
     int context_label_counter;
     int current_analysis_direction{}; //0:initial pass, 1:forward, 2:backward
     int processing_context_label{};
-//    std::unordered_map<pair<int, Instruction *>, pair<F, B>, HashFunction> IN, OUT;
     std::unordered_map<int,unordered_map<llvm::Instruction *,pair<F,B>>> IN, OUT;
     std::unordered_map<int, bool> isFree;
     std::string direction;
-
-    //mapping from context label to context object
-//    map<int,pair<Function*,pair<pair<F,B>,pair<F,B>>>>context_label_to_context_object_map;
     unordered_map<int, Context<F,B> *> context_label_to_context_object_map;
 
     //mapping from context object to context label
     //mapping from function to  pair<inflow,outflow>
     //inflow and outflow are themselves pairs of forward and backward component values.
     //The forward and backward components are themselves pairs of G,L dataflow values.
-
-//    map<pair<Function*,pair<pair<F,B>,pair<F,B>>>,int>context_object_to_context_label_map;
-//    map<Context<F,B>,int> context_object_to_context_label_map;
     bool debug{};
     float total_memory{}, vm{}, rss{};
 
@@ -145,18 +133,7 @@ protected:
 
     //List of contexts
     unordered_set<int> ProcedureContext;
-
-    // mapping from (context label,basic block) to (forward and backward) data flow values
-//    unordered_map<pair<int,BasicBlock*>,std::pair<F,B>,HashFunction> CS_BB_IN, CS_BB_OUT;
-//    unordered_map<int, unordered_map<BasicBlock *, std::pair<F, B>>> CS_BB_IN, CS_BB_OUT;
-
-    // worklist of (context label,basic block) for both directions of analysis
-//    stack<pair<int, BasicBlock *>> backward_worklist, forward_worklist;
     Worklist<pair<int,BasicBlock *>,HashFunction> backward_worklist, forward_worklist;
-
-    // mapping to check which entries are already part of the worklist (key,value)
-//    unordered_map<pair<int, BasicBlock *>, bool, HashFunction> forward_worklist_contains_this_entry;
-//    unordered_map<pair<int, BasicBlock *>, bool, HashFunction> backward_worklist_contains_this_entry;
 
     // mapping from (context label,call site) to target context label
     unordered_map<pair<int, Instruction *>, int, HashFunction> context_transition_graph; //graph
@@ -183,8 +160,6 @@ public:
 
     void doAnalysis(Module &M);
 
-//    void INIT_CONTEXT(pair<Function*,pair<pair<F,B>,pair<F,B>>> context_object);
-//    void INIT_CONTEXT(Context<F,B>);
     void INIT_CONTEXT(llvm::Function *, const std::pair<F, B> &, const std::pair<F, B> &);
 
     void doAnalysisForward();
@@ -195,19 +170,13 @@ public:
 
     B NormalFlowFunctionBackward(pair<int, BasicBlock *>);
 
-//    int check_if_context_already_exists(pair<Function*,pair<pair<F,B>,pair<F,B>>> new_context_object);
     int check_if_context_already_exists(llvm::Function *, const pair<F, B> &, const pair<F, B> &);
-
-    void drawSuperGraph(Module &M);
 
     void printWorklistMaps();
 
-    // bool isAnIgnorableDebugInstruction(std::string mainStr, std::string toMatch);
     bool isAnIgnorableDebugInstruction(Instruction *);
 
     void performSplittingBB(Function &f);
-
-    void freeMemory(int);
 
     void setCurrentModule(Module *);
 
@@ -262,16 +231,12 @@ public:
 
     Function *getFunctionAssociatedWithThisContext(int);
 
-    void setFunctionAssociatedWithThisContext(int, Function *);
-
     void printContext();
 
     virtual pair<F, B> CallInflowFunction(int, Function *, BasicBlock *, const F &, const B &);
 
     virtual pair<F, B> CallOutflowFunction(int, Function *, BasicBlock *, const F &, const B &, const F &, const B &);
 
-
-    virtual void printResults() {}
 
     virtual F computeOutFromIn(Instruction &I);
 
@@ -282,8 +247,8 @@ public:
     virtual F getPurelyLocalComponentForward(const F& dfv) const;
 
     virtual F getPurelyGlobalComponentForward(const F& dfv) const;
-    // virtual F getMixedComponentForward(F dfv);
-    // virtual F getCombinedValuesAtCallForward(F dfv1,F dfv2);
+    virtual F getMixedComponentForward(const F& dfv) const;
+    virtual F getCombinedValuesAtCallForward(const F& dfv1,const F& dfv2) const;
 
     virtual void printDataFlowValuesForward(const F &dfv) const {}
 
@@ -293,18 +258,12 @@ public:
     virtual B getInitialisationValueBackward();//{}
     virtual B performMeetBackward(const B& d1, const B& d2) const;//{}
     virtual bool EqualDataFlowValuesBackward(const B& d1, const B& d2) const;//{}
-//     virtual B getPurelyLocalComponentBackward(B dfv);
+    virtual B getPurelyLocalComponentBackward(const B& dfv) const;
     virtual B getPurelyGlobalComponentBackward(const B& dfv) const;
-    // virtual B getMixedComponentBackward(B dfv);
-    // virtual B getCombinedValuesAtCallBackward(B dfv1,B dfv2);
+    virtual B getMixedComponentBackward(const B& dfv) const;
+    virtual B getCombinedValuesAtCallBackward(const B& dfv1, const B& dfv2) const;
 
     virtual void printDataFlowValuesBackward(const B& dfv) const {}
-
-    void printInOutMaps();
-
-    virtual void printForwardWorklist() {}
-
-    virtual void printBackwardWorklist() {}
 
 
 };
@@ -472,51 +431,42 @@ F Analysis<F, B>::getPurelyLocalComponentForward(const F& dfv) const {
     llvm::outs() << "\nThis function getPurelyLocalComponentForward() has not been implemented. EXITING !!\n";
     exit(-1);
 }
-/*
 template <class F,class B>
-B Analysis<F,B>::getPurelyLocalComponentBackward(B dfv)
+B Analysis<F,B>::getPurelyLocalComponentBackward(const B& dfv) const
 {
     llvm::outs()<<"\nThis function getPurelyLocalComponentBackward() has not been implemented. EXITING !!\n";
     exit(-1);  
 }
 
-template <class F,class B>
-F Analysis<F,B>::getPurelyLocalComponentForward(F dfv)
-{
-    llvm::outs()<<"\nThis function getPurelyLocalComponentForward() has not been implemented. EXITING !!\n";
-    exit(-1);  
-}
-
 
 
 template <class F,class B>
-B Analysis<F,B>::getMixedComponentBackward(B dfv)
+B Analysis<F,B>::getMixedComponentBackward(const B& dfv) const
 {
     llvm::outs()<<"\nThis function getMixedComponentBackward() has not been implemented. EXITING !!\n";
     exit(-1);
 }
 
 template <class F,class B>
-F Analysis<F,B>::getMixedComponentForward(F dfv)
+F Analysis<F,B>::getMixedComponentForward(const F& dfv) const
 {
     llvm::outs()<<"\nThis function getMixedComponentForward() has not been implemented. EXITING !!\n";
     exit(-1);
 }
 
 template <class F,class B>
-B Analysis<F,B>::getCombinedValuesAtCallBackward(B dfv1,B dfv2)
+B Analysis<F,B>::getCombinedValuesAtCallBackward(const B& dfv1, const B& dfv2) const
 {
     llvm::outs()<<"\nThis function getCombinedValuesAtCallBackward() has not been implemented. EXITING !!\n";
     exit(-1);
 }
 
 template <class F,class B>
-F Analysis<F,B>::getCombinedValuesAtCallForward(F dfv1,F dfv2)
+F Analysis<F,B>::getCombinedValuesAtCallForward(const F& dfv1, const F& dfv2) const
 {
     llvm::outs()<<"\nThis function getCombinedValuesAtCallForward() has not been implemented. EXITING !!\n";
     exit(-1);
 }
-*/
 //========================================================================================
 
 template<class F, class B>
@@ -697,11 +647,6 @@ Function *Analysis<F, B>::getFunctionAssociatedWithThisContext(int context_label
 }
 
 template<class F, class B>
-void Analysis<F, B>::setFunctionAssociatedWithThisContext(int context_label, Function *f) {
-//    context_label_to_context_object_map[context_label].first=f;
-}
-
-template<class F, class B>
 int Analysis<F, B>::getNumberOfContexts() {
     return ProcedureContext.size();
 }
@@ -762,29 +707,24 @@ void Analysis<F, B>::doAnalysis(Module &M) {
         }
     } else {
         direction = "bidirectional";
-//        int fi=1,bi=1;
-//        int iteration = 1;
-//        while (forward_worklist.size()>0||backward_worklist.size()>0)
-//        {
-//            llvm::outs() << REDB << "\n--------------------------------------Start Iteration-" << iteration << "--------------------------------------\n";
-//            llvm::outs()<<MAGENTAB<<"\nBackward Iteration:"<<bi++<<RST;
-//            // current_analysis_direction=2;
-//            setCurrentAnalysisDirection(2);
-//            while(backward_worklist.size()>0)
-//            {
-//                doAnalysisBackward();
-//            }
-//            llvm::outs()<<MAGENTAB<<"\nForward Iteration:"<<fi++<<RST;
-//            // current_analysis_direction=1;
-//            setCurrentAnalysisDirection(1);
-//            while(forward_worklist.size()>0)
-//            {
-//                doAnalysisForward();
-//            }
-//            printContext();
-//            llvm::outs() << REDB << "\n--------------------------------------End Iteration-" << iteration << "--------------------------------------\n";
-//            iteration++;
-//        }
+        int fi=1,bi=1;
+        int iteration = 1;
+        while (forward_worklist.size()>0 || backward_worklist.size()>0)
+        {
+            // current_analysis_direction=2;
+            setCurrentAnalysisDirection(2);
+            while(backward_worklist.size()>0)
+            {
+                doAnalysisBackward();
+            }
+            // current_analysis_direction=1;
+            setCurrentAnalysisDirection(1);
+            while(forward_worklist.size()>0)
+            {
+                doAnalysisForward();
+            }
+            iteration++;
+        }
     }
     stop = high_resolution_clock::now();
     duration = duration_cast<seconds>(stop - start);
@@ -848,318 +788,213 @@ void Analysis<F, B>::INIT_CONTEXT(llvm::Function *function, const std::pair<F, B
                      getForwardInflowForThisContext(current_context_label));
 //        CS_BB_IN[make_pair(current_context_label,&context_object.getFunction()->getEntryBlock())].first=getForwardInflowForThisContext(current_context_label);
     } else if (std::is_same<F, NoAnalysisType>::value) {
-//        if (debug) {
-//            llvm::outs() << "INITIALIZING CONTEXT:-" << "\n";
-//            llvm::outs() << "LABEL: " << context_object.getLabel() << "\n";
-//            llvm::outs() << "FUNCTION: " << function->getName() << "\n";
-//            llvm::outs() << "Inflow Value: ";
-//            printDataFlowValuesBackward(Inflow.second);
-//        }
-//        //backward analysis
-////        context_label_to_context_object_map[current_context_label].first=&function;
-//        context_label_to_context_object_map[current_context_label] = context_object;
-//        setBackwardOutflowForThisContext(current_context_label,
-//                                         getInitialisationValueBackward());//setting outflow backward
-////        context_object_to_context_label_map[context_label_to_context_object_map[current_context_label]]=current_context_label;
-//        ProcedureContext.insert(current_context_label);
-//
-//        for (BasicBlock *BB:inverse_post_order(&context_object.getFunction()->back())) {
-//            BasicBlock &b = *BB;
-//            forward_worklist.push(make_pair(current_context_label, &b));
-//            backward_worklist.push(make_pair(current_context_label, &b));
-//            forward_worklist_contains_this_entry[make_pair(current_context_label, &b)] = true;
-//            backward_worklist_contains_this_entry[make_pair(current_context_label, &b)] = true;
-//            setBackwardIn(current_context_label, &b, getInitialisationValueBackward());
-//            setBackwardOut(current_context_label, &b, getInitialisationValueBackward());
-////            CS_BB_IN[make_pair(current_context_label,&b)].second=getInitialisationValueBackward();
-////            CS_BB_OUT[make_pair(current_context_label,&b)].second=getInitialisationValueBackward();
-//
-//            //initialise IN-OUT maps for every instruction
-//            for (auto inst = &*(b.begin()); inst != nullptr; inst = inst->getNextNonDebugInstruction()) {
-//                setBackwardComponentAtInOfThisInstruction(&(*inst), getInitialisationValueBackward());
-//                setBackwardComponentAtOutOfThisInstruction(&(*inst), getInitialisationValueBackward());
-//            }
-//        }
-//        if (current_context_label == 0)//main function with first invocation
-//        {
-//            setBackwardInflowForThisContext(current_context_label,
-//                                            getBoundaryInformationBackward());//setting inflow backward
-//        } else {
-//            setBackwardInflowForThisContext(current_context_label,
-//                                            context_object.getInflowValue().second);//setting inflow backward
-//        }
-//        setBackwardOut(current_context_label, &context_object.getFunction()->back(),
-//                       getBackwardInflowForThisContext(current_context_label));
+        if (debug) {
+            llvm::outs() << "INITIALIZING CONTEXT:-" << "\n";
+            llvm::outs() << "LABEL: " << context_object->getLabel() << "\n";
+            llvm::outs() << "FUNCTION: " << function->getName() << "\n";
+            llvm::outs() << "Inflow Value: ";
+            printDataFlowValuesBackward(Inflow.second);
+        }
+        //backward analysis
+        context_label_to_context_object_map[current_context_label] = context_object;
+        setBackwardOutflowForThisContext(current_context_label,
+                                         getInitialisationValueBackward());//setting outflow backward
+        ProcedureContext.insert(current_context_label);
+
+        for (BasicBlock *BB:inverse_post_order(&context_object->getFunction()->back())) {
+            BasicBlock &b = *BB;
+            backward_worklist.workInsert(make_pair(current_context_label, &b));
+            if(direction == "bidirectional"){
+                backward_worklist.workInsert(make_pair(current_context_label, &b));
+            }
+            setBackwardIn(current_context_label, &b, getInitialisationValueBackward());
+            setBackwardOut(current_context_label, &b, getInitialisationValueBackward());
+//            CS_BB_IN[make_pair(current_context_label,&b)].second=getInitialisationValueBackward();
+//            CS_BB_OUT[make_pair(current_context_label,&b)].second=getInitialisationValueBackward();
+
+            //initialise IN-OUT maps for every instruction
+            for (auto inst = &*(b.begin()); inst != nullptr; inst = inst->getNextNonDebugInstruction()) {
+                setBackwardComponentAtInOfThisInstruction(&(*inst), getInitialisationValueBackward());
+                setBackwardComponentAtOutOfThisInstruction(&(*inst), getInitialisationValueBackward());
+            }
+        }
+        if (current_context_label == 0)//main function with first invocation
+        {
+            setBackwardInflowForThisContext(current_context_label,
+                                            getBoundaryInformationBackward());//setting inflow backward
+        } else {
+            setBackwardInflowForThisContext(current_context_label,
+                                            context_object->getInflowValue().second);//setting inflow backward
+        }
+        setBackwardOut(current_context_label, &context_object->getFunction()->back(),
+                       getBackwardInflowForThisContext(current_context_label));
+        setBackwardOut(current_context_label,&context_object->getFunction()->back(), getBackwardInflowForThisContext(current_context_label));
 //        CS_BB_OUT[make_pair(current_context_label,&context_object.getFunction().back())].second=getBackwardInflowForThisContext(current_context_label);
     } else {
         // Todo for Bidirectional Analysis
+        context_label_to_context_object_map[current_context_label] = context_object;
+        if(getCurrentAnalysisDirection() == 10){
+            setForwardOutflowForThisContext(current_context_label,getInitialisationValueForward());
+            setBackwardOutflowForThisContext(current_context_label,getInitialisationValueBackward());
+            ProcedureContext.insert(current_context_label);
+            for(BasicBlock *BB : post_order(&context_object->getFunction()->getEntryBlock()))
+            {
+                BasicBlock &b = *BB;
+                // llvm::outs()<<"\nBasicBlock: ";
+                // b.printAsOperand(llvm::outs(),false);
+//                forward_worklist.push(make_pair(current_context_label,&b));
+                forward_worklist.workInsert(make_pair(current_context_label,&b));
+                // backward_worklist.push(make_pair(current_context_label,&b));
+//                forward_worklist_contains_this_entry[make_pair(current_context_label,&b)]=true;
+                // backward_worklist_contains_this_entry[make_pair(current_context_label,&b)]=true;
+                setForwardIn(current_context_label,&b,getInitialisationValueForward());
+                setBackwardIn(current_context_label,&b,getInitialisationValueBackward());
+                setForwardOut(current_context_label,&b,getInitialisationValueForward());
+                setBackwardOut(current_context_label,&b,getInitialisationValueBackward());
+//                CS_BB_IN[make_pair(current_context_label,&b)].first=getInitialisationValueForward();
+//                CS_BB_IN[make_pair(current_context_label,&b)].second=getInitialisationValueBackward();
+//                CS_BB_OUT[make_pair(current_context_label,&b)].first=getInitialisationValueForward();
+//                CS_BB_OUT[make_pair(current_context_label,&b)].second=getInitialisationValueBackward();
+
+                //initialise IN-OUT maps for every instruction
+                for(auto inst=&*(b.begin());inst!=nullptr;inst=inst->getNextNonDebugInstruction())
+                {
+                    // llvm::outs()<<"\n"<<*inst;
+                    setBackwardComponentAtInOfThisInstruction(&(*inst),getInitialisationValueBackward());
+                    setBackwardComponentAtOutOfThisInstruction(&(*inst),getInitialisationValueBackward());
+                    setForwardComponentAtInOfThisInstruction(&(*inst),getInitialisationValueForward());
+                    setForwardComponentAtOutOfThisInstruction(&(*inst),getInitialisationValueForward());
+                    // IN[&(*inst)].first=getInitialisationValueForward();
+                    // OUT[&(*inst)].first=getInitialisationValueForward();
+                    // IN[&(*inst)].second=getInitialisationValueBackward();
+                    // OUT[&(*inst)].second=getInitialisationValueBackward();
+                }
+            }
+        } else if(getCurrentAnalysisDirection()==20) {
+            setForwardOutflowForThisContext(current_context_label,getInitialisationValueForward());//setting outflow forward
+            setBackwardOutflowForThisContext(current_context_label,getInitialisationValueBackward());//setting outflow backward
+            // context_label_to_context_object_map[current_context_label].second.second.first=getInitialisationValueForward();//setting outflow forward
+            // context_label_to_context_object_map[current_context_label].second.second.second=getInitialisationValueBackward();//setting outflow backward
+            ProcedureContext.insert(current_context_label);
+            for(BasicBlock *BB : inverse_post_order(&context_object->getFunction()->back()))
+            {
+                BasicBlock &b=*BB;
+                // llvm::outs()<<"\nBasicBlock: ";
+                // b.printAsOperand(llvm::outs(),false);
+                // forward_worklist.push(make_pair(current_context_label,&b));
+                backward_worklist.workInsert(make_pair(current_context_label,&b));
+//                backward_worklist.push(make_pair(current_context_label,&b));
+                // forward_worklist_contains_this_entry[make_pair(current_context_label,&b)]=true;
+//                backward_worklist_contains_this_entry[make_pair(current_context_label,&b)]=true;
+                setForwardIn(current_context_label,&b,getInitialisationValueForward());
+                setBackwardIn(current_context_label,&b,getInitialisationValueBackward());
+                setForwardOut(current_context_label,&b,getInitialisationValueForward());
+                setBackwardOut(current_context_label,&b,getInitialisationValueBackward());
+//                CS_BB_IN[make_pair(current_context_label,&b)].first=getInitialisationValueForward();
+//                CS_BB_IN[make_pair(current_context_label,&b)].second=getInitialisationValueBackward();
+//                CS_BB_OUT[make_pair(current_context_label,&b)].first=getInitialisationValueForward();
+//                CS_BB_OUT[make_pair(current_context_label,&b)].second=getInitialisationValueBackward();
+
+                //initialise IN-OUT maps for every instruction
+                for(auto inst=&*(b.begin());inst!=nullptr;inst=inst->getNextNonDebugInstruction())
+                {
+                    // llvm::outs()<<"\n"<<*inst;
+                    setBackwardComponentAtInOfThisInstruction(&(*inst),getInitialisationValueBackward());
+                    setBackwardComponentAtOutOfThisInstruction(&(*inst),getInitialisationValueBackward());
+                    setForwardComponentAtInOfThisInstruction(&(*inst),getInitialisationValueForward());
+                    setForwardComponentAtOutOfThisInstruction(&(*inst),getInitialisationValueForward());
+                    // IN[&(*inst)].first=getInitialisationValueForward();
+                    // OUT[&(*inst)].first=getInitialisationValueForward();
+                    // IN[&(*inst)].second=getInitialisationValueBackward();
+                    // OUT[&(*inst)].second=getInitialisationValueBackward();
+                }
+            }
+        } else {
+            setForwardOutflowForThisContext(current_context_label,getInitialisationValueForward());//setting outflow forward
+            setBackwardOutflowForThisContext(current_context_label,getInitialisationValueBackward());//setting outflow backward
+            // context_label_to_context_object_map[current_context_label].second.second.second=getInitialisationValueBackward();//setting outflow backward
+            // context_label_to_context_object_map[current_context_label].second.second.first=getInitialisationValueForward();//setting outflow forward
+//            context_object_to_context_label_map[context_label_to_context_object_map[current_context_label]]=current_context_label;
+            ProcedureContext.insert(current_context_label);
+            for(BasicBlock *BB:inverse_post_order(&context_object->getFunction()->back()))
+            {
+                //populate backward worklist
+                BasicBlock &b=*BB;
+                // llvm::outs()<<"\nBasicBlock: ";
+                // b.printAsOperand(llvm::outs(),false);
+                // forward_worklist.push(make_pair(current_context_label,&b));
+//                backward_worklist.push(make_pair(current_context_label,&b));
+                backward_worklist.workInsert(make_pair(current_context_label,&b));
+                // forward_worklist_contains_this_entry[make_pair(current_context_label,&b)]=true;
+//                backward_worklist_contains_this_entry[make_pair(current_context_label,&b)]=true;
+                // CS_BB_IN[make_pair(current_context_label,&b)].first=getInitialisationValueForward();
+//                CS_BB_IN[make_pair(current_context_label,&b)].second=getInitialisationValueBackward();
+                setBackwardIn(current_context_label,&b,getInitialisationValueBackward());
+                // CS_BB_OUT[make_pair(current_context_label,&b)].first=getInitialisationValueForward();
+//                CS_BB_OUT[make_pair(current_context_label,&b)].second=getInitialisationValueBackward();
+                setBackwardOut(current_context_label,&b,getInitialisationValueBackward());
+
+                //initialise IN-OUT maps for every instruction
+                for(auto inst=&*(b.begin());inst!=nullptr;inst=inst->getNextNonDebugInstruction())
+                {
+                    // llvm::outs()<<"\n"<<*inst;
+                    setBackwardComponentAtInOfThisInstruction(&(*inst),getInitialisationValueBackward());
+                    setBackwardComponentAtOutOfThisInstruction(&(*inst),getInitialisationValueBackward());
+                    // setForwardComponentAtInOfThisInstruction(&(*inst),getInitialisationValueForward());
+                    // setForwardComponentAtOutOfThisInstruction(&(*inst),getInitialisationValueForward());
+                    // IN[&(*inst)].first=getInitialisationValueForward();
+                    // OUT[&(*inst)].first=getInitialisationValueForward();
+                    // IN[&(*inst)].second=getInitialisationValueBackward();
+                    // OUT[&(*inst)].second=getInitialisationValueBackward();
+                }
+            }
+            for(BasicBlock *BB:post_order(&context_object->getFunction()->getEntryBlock()))
+            {
+                //populate forward worklist
+                BasicBlock &b=*BB;
+                // llvm::outs()<<"\nBasicBlock: ";
+                // b.printAsOperand(llvm::outs(),false);
+//                forward_worklist.push(make_pair(current_context_label,&b));
+                forward_worklist.workInsert(make_pair(current_context_label,&b));
+                // backward_worklist.push(make_pair(current_context_label,&b));
+//                forward_worklist_contains_this_entry[make_pair(current_context_label,&b)]=true;
+                // backward_worklist_contains_this_entry[make_pair(current_context_label,&b)]=true;
+//                CS_BB_IN[make_pair(current_context_label,&b)].first=getInitialisationValueForward();
+                setForwardIn(current_context_label,&b,getInitialisationValueForward());
+                // CS_BB_IN[make_pair(current_context_label,&b)].second=getInitialisationValueBackward();
+//                CS_BB_OUT[make_pair(current_context_label,&b)].first=getInitialisationValueForward();
+                setForwardOut(current_context_label,&b,getInitialisationValueForward());
+                // CS_BB_OUT[make_pair(current_context_label,&b)].second=getInitialisationValueBackward();
+
+                //initialise IN-OUT maps for every instruction
+                for(auto inst=&*(b.begin());inst!=nullptr;inst=inst->getNextNonDebugInstruction())
+                {
+                    // llvm::outs()<<"\n"<<*inst;
+                    setForwardComponentAtInOfThisInstruction(&(*inst),getInitialisationValueForward());
+                    setForwardComponentAtOutOfThisInstruction(&(*inst),getInitialisationValueForward());
+                    // IN[&(*inst)].first=getInitialisationValueForward();
+                    // OUT[&(*inst)].first=getInitialisationValueForward();
+
+                    // IN[&(*inst)].second=getInitialisationValueBackward();
+                    // OUT[&(*inst)].second=getInitialisationValueBackward();
+                }
+            }
+            if(current_context_label==0){ //main function with first invocation
+                setForwardInflowForThisContext(current_context_label,getBoundaryInformationForward());//setting inflow forward
+                setBackwardInflowForThisContext(current_context_label,getBoundaryInformationBackward());//setting inflow backward
+            } else {
+                setForwardInflowForThisContext(current_context_label,context_object->getInflowValue().first);//setting inflow forward
+                setBackwardInflowForThisContext(current_context_label,context_object->getInflowValue().second);//setting inflow backward
+            }
+            setForwardIn(current_context_label,&context_object->getFunction()->getEntryBlock(),getForwardInflowForThisContext(current_context_label));
+            setBackwardOut(current_context_label,&context_object->getFunction()->back(),getBackwardInflowForThisContext(current_context_label));
+//        CS_BB_IN[make_pair(current_context_label,&function.getEntryBlock())].first=getForwardInflowForThisContext(current_context_label);
+//        CS_BB_OUT[make_pair(current_context_label,&function.back())].second=getBackwardInflowForThisContext(current_context_label);
+        }
     }
     process_mem_usage(this->vm, this->rss);
     this->total_memory = max(this->total_memory, this->vm);
-
 }
-//pair<Function*,pair<pair<F,B>,pair<F,B>>> context_object
-//template <class F,class B>
-//void Analysis<F,B>::INIT_CONTEXT(Context<F,B> context_object)//,F forward_component,B backward_component)
-//{
-//    Function &function=*(context_object.getFunction());
-////    context_label_counter++;
-//    int current_context_label = context_object.getLabel();
-//    setProcessingContextLabel(current_context_label);
-//
-//    if(std::is_same<F, NoAnalysisType>::value)
-//    {
-//        //backward analysis
-//
-//        context_label_to_context_object_map[current_context_label].first=&function;
-//        setBackwardOutflowForThisContext(current_context_label,getInitialisationValueBackward());//setting outflow backward
-//        context_object_to_context_label_map[context_label_to_context_object_map[current_context_label]]=current_context_label;
-//        ProcedureContext.insert(current_context_label);
-//
-//        for(BasicBlock *BB:inverse_post_order(&function.back()))
-//        {
-//            BasicBlock &b=*BB;
-//            forward_worklist.push(make_pair(current_context_label,&b));
-//            backward_worklist.push(make_pair(current_context_label,&b));
-//            forward_worklist_contains_this_entry[make_pair(current_context_label,&b)]=true;
-//            backward_worklist_contains_this_entry[make_pair(current_context_label,&b)]=true;
-//            CS_BB_IN[make_pair(current_context_label,&b)].second=getInitialisationValueBackward();
-//            CS_BB_OUT[make_pair(current_context_label,&b)].second=getInitialisationValueBackward();
-//
-//            //initialise IN-OUT maps for every instruction
-//            for(auto inst=&*(b.begin());inst!=nullptr;inst=inst->getNextNonDebugInstruction())
-//            {
-//                setBackwardComponentAtInOfThisInstruction(&(*inst),getInitialisationValueBackward());
-//                setBackwardComponentAtOutOfThisInstruction(&(*inst),getInitialisationValueBackward());
-//            }
-//        }
-//        if(current_context_label==0)//main function with first invocation
-//        {
-//            setBackwardInflowForThisContext(current_context_label,getBoundaryInformationBackward());//setting inflow backward
-//        }
-//        else
-//        {
-//            setBackwardInflowForThisContext(current_context_label,context_object.second.first.second);//setting inflow backward
-//            // context_label_to_context_object_map[current_context_label].second.first.second=context_object.second.first.second;//setting inflow backward
-//        }
-//        // llvm::outs()<<MAGENTAB<<"\nSetting CS BB OUT Backward:"<<context_object.second.first.second[0]<<" for label:"<<current_context_label;
-//        CS_BB_OUT[make_pair(current_context_label,&function.back())].second=getBackwardInflowForThisContext(current_context_label);
-//        // CS_BB_OUT[make_pair(current_context_label,&function.back())].second=context_label_to_context_object_map[current_context_label].second.first.second;
-//
-//    }
-//    else if(std::is_same<B, NoAnalysisType>::value)
-//    {
-//        //forward analysis
-////        context_label_to_context_object_map[current_context_label].first=&function;
-//        context_label_to_context_object_map[current_context_label] = context_object;
-//
-//        setForwardOutflowForThisContext(current_context_label,getInitialisationValueForward());//setting outflow forward
-//        ProcedureContext.insert(current_context_label);
-//
-//        for(BasicBlock *BB:post_order(&function.getEntryBlock()))
-//        {
-//            BasicBlock &b=*BB;
-//            forward_worklist.push(make_pair(current_context_label,&b));
-//            backward_worklist.push(make_pair(current_context_label,&b));
-//            forward_worklist_contains_this_entry[make_pair(current_context_label,&b)]=true;
-//            backward_worklist_contains_this_entry[make_pair(current_context_label,&b)]=true;
-//            CS_BB_IN[make_pair(current_context_label,&b)].first=getInitialisationValueForward();
-//            CS_BB_OUT[make_pair(current_context_label,&b)].first=getInitialisationValueForward();
-//
-//            //initialise IN-OUT maps for every instruction
-//            for(auto inst=&*(b.begin());inst!=nullptr;inst=inst->getNextNonDebugInstruction())
-//            {
-//                setForwardComponentAtInOfThisInstruction(&(*inst),getInitialisationValueForward());
-//                setForwardComponentAtOutOfThisInstruction(&(*inst),getInitialisationValueForward());
-//            }
-//        }
-//        if(current_context_label==1)//main function with first invocation
-//        {
-//            setForwardInflowForThisContext(current_context_label,getBoundaryInformationForward());//setting inflow forward
-//        }
-//        else
-//        {
-////            setForwardInflowForThisContext(current_context_label,context_object.second.first.first);//setting inflow forward
-//            setForwardInflowForThisContext(current_context_label,context_object.second.first.first);
-//        }
-//        CS_BB_IN[make_pair(current_context_label,&function.getEntryBlock())].first=getForwardInflowForThisContext(current_context_label);
-//    }
-//    else
-//    {
-//        //bidirectional analysis
-//        context_label_to_context_object_map[current_context_label].first=&function;
-//
-//        if(getCurrentAnalysisDirection()==10)
-//        {
-////            llvm::outs()<<CYANB<<"\nforward init-context"<<RST;
-//            setForwardOutflowForThisContext(current_context_label,getInitialisationValueForward());//setting outflow forward
-//            setBackwardOutflowForThisContext(current_context_label,getInitialisationValueBackward());//setting outflow backward
-//            // context_label_to_context_object_map[current_context_label].second.second.first=getInitialisationValueForward();//setting outflow forward
-//            // context_label_to_context_object_map[current_context_label].second.second.second=getInitialisationValueBackward();//setting outflow backward
-//
-//            context_object_to_context_label_map[context_label_to_context_object_map[current_context_label]]=current_context_label;
-//            ProcedureContext.insert(current_context_label);
-//            for(BasicBlock *BB:post_order(&function.getEntryBlock()))
-//            {
-//                BasicBlock &b=*BB;
-//                // llvm::outs()<<"\nBasicBlock: ";
-//                // b.printAsOperand(llvm::outs(),false);
-//                forward_worklist.push(make_pair(current_context_label,&b));
-//                // backward_worklist.push(make_pair(current_context_label,&b));
-//                forward_worklist_contains_this_entry[make_pair(current_context_label,&b)]=true;
-//                // backward_worklist_contains_this_entry[make_pair(current_context_label,&b)]=true;
-//                CS_BB_IN[make_pair(current_context_label,&b)].first=getInitialisationValueForward();
-//                CS_BB_IN[make_pair(current_context_label,&b)].second=getInitialisationValueBackward();
-//                CS_BB_OUT[make_pair(current_context_label,&b)].first=getInitialisationValueForward();
-//                CS_BB_OUT[make_pair(current_context_label,&b)].second=getInitialisationValueBackward();
-//
-//                //initialise IN-OUT maps for every instruction
-//                for(auto inst=&*(b.begin());inst!=nullptr;inst=inst->getNextNonDebugInstruction())
-//                {
-//                    // llvm::outs()<<"\n"<<*inst;
-//                    setBackwardComponentAtInOfThisInstruction(&(*inst),getInitialisationValueBackward());
-//                    setBackwardComponentAtOutOfThisInstruction(&(*inst),getInitialisationValueBackward());
-//                    setForwardComponentAtInOfThisInstruction(&(*inst),getInitialisationValueForward());
-//                    setForwardComponentAtOutOfThisInstruction(&(*inst),getInitialisationValueForward());
-//                    // IN[&(*inst)].first=getInitialisationValueForward();
-//                    // OUT[&(*inst)].first=getInitialisationValueForward();
-//                    // IN[&(*inst)].second=getInitialisationValueBackward();
-//                    // OUT[&(*inst)].second=getInitialisationValueBackward();
-//                }
-//            }
-//        }
-//        else if(getCurrentAnalysisDirection()==20)
-//        {
-////            llvm::outs()<<CYANB<<"\nbackward init-context"<<RST;
-//            setForwardOutflowForThisContext(current_context_label,getInitialisationValueForward());//setting outflow forward
-//            setBackwardOutflowForThisContext(current_context_label,getInitialisationValueBackward());//setting outflow backward
-//            // context_label_to_context_object_map[current_context_label].second.second.first=getInitialisationValueForward();//setting outflow forward
-//            // context_label_to_context_object_map[current_context_label].second.second.second=getInitialisationValueBackward();//setting outflow backward
-//
-//            context_object_to_context_label_map[context_label_to_context_object_map[current_context_label]]=current_context_label;
-//            ProcedureContext.insert(current_context_label);
-//            for(BasicBlock *BB:inverse_post_order(&function.back()))
-//            {
-//                BasicBlock &b=*BB;
-//                // llvm::outs()<<"\nBasicBlock: ";
-//                // b.printAsOperand(llvm::outs(),false);
-//                // forward_worklist.push(make_pair(current_context_label,&b));
-//                backward_worklist.push(make_pair(current_context_label,&b));
-//                // forward_worklist_contains_this_entry[make_pair(current_context_label,&b)]=true;
-//                backward_worklist_contains_this_entry[make_pair(current_context_label,&b)]=true;
-//                CS_BB_IN[make_pair(current_context_label,&b)].first=getInitialisationValueForward();
-//                CS_BB_IN[make_pair(current_context_label,&b)].second=getInitialisationValueBackward();
-//                CS_BB_OUT[make_pair(current_context_label,&b)].first=getInitialisationValueForward();
-//                CS_BB_OUT[make_pair(current_context_label,&b)].second=getInitialisationValueBackward();
-//
-//                //initialise IN-OUT maps for every instruction
-//                for(auto inst=&*(b.begin());inst!=nullptr;inst=inst->getNextNonDebugInstruction())
-//                {
-//                    // llvm::outs()<<"\n"<<*inst;
-//                    setBackwardComponentAtInOfThisInstruction(&(*inst),getInitialisationValueBackward());
-//                    setBackwardComponentAtOutOfThisInstruction(&(*inst),getInitialisationValueBackward());
-//                    setForwardComponentAtInOfThisInstruction(&(*inst),getInitialisationValueForward());
-//                    setForwardComponentAtOutOfThisInstruction(&(*inst),getInitialisationValueForward());
-//                    // IN[&(*inst)].first=getInitialisationValueForward();
-//                    // OUT[&(*inst)].first=getInitialisationValueForward();
-//                    // IN[&(*inst)].second=getInitialisationValueBackward();
-//                    // OUT[&(*inst)].second=getInitialisationValueBackward();
-//                }
-//            }
-//
-//        }
-//        else
-//        {
-//            setForwardOutflowForThisContext(current_context_label,getInitialisationValueForward());//setting outflow forward
-//            setBackwardOutflowForThisContext(current_context_label,getInitialisationValueBackward());//setting outflow backward
-//            // context_label_to_context_object_map[current_context_label].second.second.second=getInitialisationValueBackward();//setting outflow backward
-//            // context_label_to_context_object_map[current_context_label].second.second.first=getInitialisationValueForward();//setting outflow forward
-//
-//
-//
-//
-//            context_object_to_context_label_map[context_label_to_context_object_map[current_context_label]]=current_context_label;
-//            ProcedureContext.insert(current_context_label);
-//            for(BasicBlock *BB:inverse_post_order(&function.back()))
-//            {
-//                //populate backward worklist
-//                BasicBlock &b=*BB;
-//                // llvm::outs()<<"\nBasicBlock: ";
-//                // b.printAsOperand(llvm::outs(),false);
-//                // forward_worklist.push(make_pair(current_context_label,&b));
-//                backward_worklist.push(make_pair(current_context_label,&b));
-//                // forward_worklist_contains_this_entry[make_pair(current_context_label,&b)]=true;
-//                backward_worklist_contains_this_entry[make_pair(current_context_label,&b)]=true;
-//                // CS_BB_IN[make_pair(current_context_label,&b)].first=getInitialisationValueForward();
-//                CS_BB_IN[make_pair(current_context_label,&b)].second=getInitialisationValueBackward();
-//                // CS_BB_OUT[make_pair(current_context_label,&b)].first=getInitialisationValueForward();
-//                CS_BB_OUT[make_pair(current_context_label,&b)].second=getInitialisationValueBackward();
-//
-//                //initialise IN-OUT maps for every instruction
-//                for(auto inst=&*(b.begin());inst!=nullptr;inst=inst->getNextNonDebugInstruction())
-//                {
-//                    // llvm::outs()<<"\n"<<*inst;
-//                    setBackwardComponentAtInOfThisInstruction(&(*inst),getInitialisationValueBackward());
-//                    setBackwardComponentAtOutOfThisInstruction(&(*inst),getInitialisationValueBackward());
-//                    // setForwardComponentAtInOfThisInstruction(&(*inst),getInitialisationValueForward());
-//                    // setForwardComponentAtOutOfThisInstruction(&(*inst),getInitialisationValueForward());
-//                    // IN[&(*inst)].first=getInitialisationValueForward();
-//                    // OUT[&(*inst)].first=getInitialisationValueForward();
-//                    // IN[&(*inst)].second=getInitialisationValueBackward();
-//                    // OUT[&(*inst)].second=getInitialisationValueBackward();
-//                }
-//            }
-//            for(BasicBlock *BB:post_order(&function.getEntryBlock()))
-//            {
-//                //populate forward worklist
-//                BasicBlock &b=*BB;
-//                // llvm::outs()<<"\nBasicBlock: ";
-//                // b.printAsOperand(llvm::outs(),false);
-//                forward_worklist.push(make_pair(current_context_label,&b));
-//                // backward_worklist.push(make_pair(current_context_label,&b));
-//                forward_worklist_contains_this_entry[make_pair(current_context_label,&b)]=true;
-//                // backward_worklist_contains_this_entry[make_pair(current_context_label,&b)]=true;
-//                CS_BB_IN[make_pair(current_context_label,&b)].first=getInitialisationValueForward();
-//                // CS_BB_IN[make_pair(current_context_label,&b)].second=getInitialisationValueBackward();
-//                CS_BB_OUT[make_pair(current_context_label,&b)].first=getInitialisationValueForward();
-//                // CS_BB_OUT[make_pair(current_context_label,&b)].second=getInitialisationValueBackward();
-//
-//                //initialise IN-OUT maps for every instruction
-//                for(auto inst=&*(b.begin());inst!=nullptr;inst=inst->getNextNonDebugInstruction())
-//                {
-//                    // llvm::outs()<<"\n"<<*inst;
-//                    setForwardComponentAtInOfThisInstruction(&(*inst),getInitialisationValueForward());
-//                    setForwardComponentAtOutOfThisInstruction(&(*inst),getInitialisationValueForward());
-//                    // IN[&(*inst)].first=getInitialisationValueForward();
-//                    // OUT[&(*inst)].first=getInitialisationValueForward();
-//
-//                    // IN[&(*inst)].second=getInitialisationValueBackward();
-//                    // OUT[&(*inst)].second=getInitialisationValueBackward();
-//                }
-//            }
-//        }
-//        //irresepective of the current direction of analysis, the INFLOW values need to be set.
-//        if(current_context_label==0)//main function with first invocation
-//        {
-//            setForwardInflowForThisContext(current_context_label,getBoundaryInformationForward());//setting inflow forward
-//            setBackwardInflowForThisContext(current_context_label,getBoundaryInformationBackward());//setting inflow backward
-//            // context_label_to_context_object_map[current_context_label].second.first.second=getBoundaryInformationBackward();//setting inflow backward
-//            // context_label_to_context_object_map[current_context_label].second.first.first=getBoundaryInformationForward();//setting inflow forward
-//        }
-//        else
-//        {
-//            setForwardInflowForThisContext(current_context_label,context_object.second.first.first);//setting inflow forward
-//            setBackwardInflowForThisContext(current_context_label,context_object.second.first.second);//setting inflow backward
-//            // context_label_to_context_object_map[current_context_label].second.first.first=context_object.second.first.first;//setting inflow forward
-//            // context_label_to_context_object_map[current_context_label].second.first.second=context_object.second.first.second;//setting inflow backward
-//        }
-//        CS_BB_IN[make_pair(current_context_label,&function.getEntryBlock())].first=getForwardInflowForThisContext(current_context_label);
-//        CS_BB_OUT[make_pair(current_context_label,&function.back())].second=getBackwardInflowForThisContext(current_context_label);
-//        // CS_BB_IN[make_pair(current_context_label,&function.getEntryBlock())].first=context_label_to_context_object_map[current_context_label].second.first.first;
-//        // CS_BB_OUT[make_pair(current_context_label,&function.back())].second=context_label_to_context_object_map[current_context_label].second.first.second;
-//
-//    }
-//}
 
 template<class F, class B>
 void Analysis<F, B>::doAnalysisForward() {
@@ -1476,7 +1311,6 @@ int Analysis<F, B>::check_if_context_already_exists(llvm::Function *function, co
         }
     } else if (std::is_same<F, NoAnalysisType>::value) {
         // Backward Analysis
-        db("23")
         for (auto set_itr:ProcedureContext) {
             Context<F, B> *current_object = context_label_to_context_object_map[set_itr];
             B new_context_values = Inflow.second;
@@ -1500,73 +1334,35 @@ int Analysis<F, B>::check_if_context_already_exists(llvm::Function *function, co
         }
     } else {
         // Todo for Bidirectional Analysis
+        for(auto set_itr : ProcedureContext) {
+            Context<F, B> *current_object = context_label_to_context_object_map[set_itr];
+            F new_context_values_forward = Inflow.first;
+            B new_context_values_backward = Inflow.second;
+            F current_context_values_forward = current_object->getInflowValue().first;
+            B current_context_values_backward = current_object->getInflowValue().second;
+            if(function->getName() == current_object->getFunction()->getName() &&
+            EqualDataFlowValuesForward(new_context_values_forward, current_context_values_forward) &&
+            EqualDataFlowValuesBackward(new_context_values_backward, current_context_values_backward)) {
+                if (debug) {
+                    llvm::outs()
+                            << "======================================================================================"
+                            << "\n";
+                    llvm::outs() << "Context found!!!!!" << "\n";
+                    llvm::outs() << "LABEL: " << set_itr << "\n";
+                    llvm::outs()
+                            << "======================================================================================"
+                            << "\n";
+                }
+                return set_itr;
+            }
+        }
     }
     return 0;
 }
-//template <class F,class B>
-//int Analysis<F,B>::check_if_context_already_exists(pair<Function*,pair<pair<F,B>,pair<F,B>>> new_context_object)
-//{
-//    if(std::is_same<B, NoAnalysisType>::value)
-//    {
-//        //forward only
-//        for(auto set_itr:ProcedureContext)
-//        {
-//            pair<Function*,pair<pair<F,B>,pair<F,B>>> current_object= context_label_to_context_object_map[set_itr];
-//            F new_context_values=new_context_object.second.first.first;
-//            F current_context_values=current_object.second.first.first;
-//            if(new_context_object.first==current_object.first && EqualDataFlowValuesForward(new_context_values,current_context_values))
-//            {
-//                return set_itr;
-//            }
-//        }
-//    }
-//    else if(std::is_same<F, NoAnalysisType>::value)
-//    {
-//        //backward only
-//        for(auto set_itr:ProcedureContext)
-//        {
-//            pair<Function*,pair<pair<F,B>,pair<F,B>>> current_object= context_label_to_context_object_map[set_itr];
-//            B new_context_values= new_context_object.second.first.second;
-//            B current_context_values= current_object.second.first.second;
-//            if(new_context_object.first==current_object.first&&EqualDataFlowValuesBackward(new_context_values,current_context_values))
-//            {
-//                return set_itr;
-//            }
-//        }
-//    }
-//    else
-//    {
-//        //bidirectional
-//        int i=0;
-//        for(auto set_itr:ProcedureContext)
-//        {
-//            pair<Function*,pair<pair<F,B>,pair<F,B>>> current_object= context_label_to_context_object_map[set_itr];
-//            F new_context_values_forward = new_context_object.second.first.first;
-//            F current_context_values_forward = current_object.second.first.first;
-//            B new_context_values_backward = new_context_object.second.first.second;
-//            B current_context_values_backward = current_object.second.first.second;
-//            if(new_context_object.first==current_object.first&&EqualDataFlowValuesBackward(new_context_values_backward,current_context_values_backward)&&EqualDataFlowValuesForward(new_context_values_forward,current_context_values_forward))
-//            {
-//                return set_itr;
-//            }
-//        }
-//    }
-//    return 0;
-//}
 
 template<class F, class B>
 void Analysis<F, B>::printWorklistMaps() {
-//    llvm::outs() << REDB << "\n-----------------------------------------";
-//    llvm::outs() << WHITEB;
-//    for (auto x:backward_worklist_contains_this_entry) {
-//        llvm::outs() << "\n";
-//        llvm::outs() << x.first.first << " ";
-//        BasicBlock *bb = x.first.second;
-//        bb->printAsOperand(llvm::outs(), false);
-//        llvm::outs() << x.second;
-//    }
-//    llvm::outs() << REDB << "\n-----------------------------------------";
-//    llvm::outs() << RST;
+
 }
 
 template<class F, class B>
@@ -1909,56 +1705,6 @@ void Analysis<F, B>::performSplittingBB(Function &function) {
 }
 
 template<class F, class B>
-void Analysis<F, B>::freeMemory(int context_label) {
-    if (isFree[context_label]) {
-        return;
-    }
-//    CS_BB_IN.erase(context_label);
-//    CS_BB_OUT.erase(context_label);
-    isFree[context_label] = true;
-}
-
-template<class F, class B>
-void Analysis<F, B>::drawSuperGraph(Module &M) {
-    filebuf fb;
-    fb.open("../testcases/supergraph/supergraph1.dot", ios::out);
-    ostream os(&fb);
-    // os << "Test sentence\n";
-    string str;
-    llvm::raw_string_ostream ss(str);
-    string str1;
-    llvm::raw_string_ostream ss1(str1);
-    int cnt = 0;
-    os << "digraph{\ngraph[fontsize=40];\n";
-    for (Function &function:M) {
-        os << "subgraph cluster_" << cnt++ << "{\n";
-        os << "style=filled;\ncolor=lightgrey;\nnode [style=filled,fillcolor=white,color=black,fontsize=40];\n";
-        for (BasicBlock *BB:inverse_post_order(&function.back())) {
-            BasicBlock &b = *BB;
-            os << "BB";
-            b.printAsOperand(ss1);
-            os << str1;
-            string bbname = b.getName().str();
-            os << " [label = \"BasicBlock " << bbname << ":\\l";
-            for (auto inst = &*(b.begin()); inst != nullptr; inst = inst->getNextNonDebugInstruction()) {
-                Instruction &I = *inst;
-                // os<<I<<"\n";
-
-                ss << I;
-                os << ss.str() << "\n";
-                str = "";
-            }
-            os << "\"];\n";
-        }
-        string procname = function.getName().str();
-        os << "label=" << "\"Procedure : " << procname << "\";\n";
-        os << "}\n";
-    }
-    os << "label=" << "supergraph\n" << "}\n";
-    fb.close();
-}
-
-template<class F, class B>
 void Analysis<F, B>::printContext() {
     llvm::outs() << "\n";
     for (auto label : ProcedureContext) {
@@ -1981,18 +1727,5 @@ void Analysis<F, B>::printContext() {
     }
 }
 
-template<class F, class B>
-void Analysis<F, B>::printInOutMaps() {
-//    llvm::outs() << "Printing IN-OUT maps:-\n";
-//    for(auto p : IN){
-//        llvm::outs() << p.first.first << " : ";
-//        llvm::outs() << *p.first.second << " -> ";
-//        printDataFlowValuesForward(p.second.first);
-//    }
-}
-
 
 #endif
-
-
-#pragma clang diagnostic pop
