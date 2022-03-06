@@ -8,5 +8,4 @@ set_target_properties(Driver PROPERTIES
 	COMPILE_FLAGS "-std=c++14 -fno-rtti -g"
 )
 llvm_config (Driver ${LLVM_LINK_COMPONENTS})
-#target_link_libraries(Driver PRIVATE /usr/local/lib/libbprinter.a)
 include(GNUInstallDirs)
