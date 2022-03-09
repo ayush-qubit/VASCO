@@ -176,6 +176,8 @@ public:
 
     bool isAnIgnorableDebugInstruction(Instruction *);
 
+    void startSplitting();
+
     void performSplittingBB(Function &f);
 
     void setCurrentModule(Module *);
@@ -659,11 +661,12 @@ void Analysis<F, B>::doAnalysis(Module &M) {
 
     //====================================SPLITTING========================================
     auto start = high_resolution_clock::now();
-    for (Function &function: M) {
-        if (function.size() > 0) {
-            performSplittingBB(function);
-        }
-    }
+//    for (Function &function: M) {
+//        if (function.size() > 0) {
+//            performSplittingBB(function);
+//        }
+//    }
+    startSplitting();
     auto stop = high_resolution_clock::now();
     auto duration = duration_cast<seconds>(stop - start);
     llvm::outs() << "Time taken in Splitting Basic Block : " << duration.count() << " seconds" << "\n";
@@ -1634,6 +1637,15 @@ B Analysis<F, B>::NormalFlowFunctionBackward(pair<int, BasicBlock *> current_pai
         prev = getBackwardComponentAtInOfThisInstruction(*inst);
     }
     return prev;
+}
+
+template<class F, class B>
+void Analysis<F,B>::startSplitting() {
+    for (Function &function : *(this->current_module)) {
+        if (function.size() > 0) {
+            performSplittingBB(function);
+        }
+    }
 }
 
 
