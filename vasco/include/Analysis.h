@@ -115,7 +115,6 @@ private:
     int current_analysis_direction{}; //0:initial pass, 1:forward, 2:backward
     int processing_context_label{};
     std::unordered_map<int,unordered_map<INSTRUCTION *,pair<F,B>>> IN, OUT;
-    std::unordered_map<int, bool> isFree;
     std::string direction;
     unordered_map<int, Context<F,B> *> context_label_to_context_object_map;
 
@@ -130,7 +129,6 @@ private:
     void printLine(int);
 
 protected:
-
     //List of contexts
     unordered_set<int> ProcedureContext;
     Worklist<pair<int,BasicBlock *>,HashFunction> backward_worklist, forward_worklist;
@@ -138,9 +136,9 @@ protected:
     // mapping from (context label,call site) to target context label
     unordered_map<pair<int, INSTRUCTION *>, int, HashFunction> context_transition_graph; //graph
 public:
-    explicit Analysis(bool);
+    explicit Analysis(bool,bool);
 
-    Analysis(bool, const string &);
+    Analysis(bool, const string &,bool);
 
     ~Analysis();
 
@@ -286,20 +284,22 @@ void Analysis<F,B,INSTRUCTION>::printLine(int label) {
 
 
 template<class F, class B, class INSTRUCTION>
-Analysis<F,B,INSTRUCTION>::Analysis(bool debug) {
+Analysis<F,B,INSTRUCTION>::Analysis(bool debug,bool SLIM) {
     current_module = nullptr;
     context_label_counter = -1;
     this->debug = debug;
     this->direction = "";
+    this->SLIM = SLIM;
 }
 
 template<class F, class B, class INSTRUCTION>
-Analysis<F,B,INSTRUCTION>::Analysis(bool debug, const string &fileName) {
+Analysis<F,B,INSTRUCTION>::Analysis(bool debug, const string &fileName, bool SLIM) {
     current_module = nullptr;
     context_label_counter = -1;
     this->debug = debug;
     freopen(fileName.c_str(), "w", stdout);
     this->direction = "";
+    this->SLIM = SLIM;
 }
 
 template<class F, class B, class INSTRUCTION>
@@ -1716,7 +1716,6 @@ void Analysis<F,B,INSTRUCTION>::performSplittingBB(Function &function) {
         containingBB = split_here.first->getParent();
         containingBB->splitBasicBlock(split_here.first);
     }
-    // function.viewCFG();
 }
 
 template<class F, class B, class INSTRUCTION>
