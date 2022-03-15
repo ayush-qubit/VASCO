@@ -15,6 +15,9 @@ include_directories(${LLVM_INCLUDE_DIRS})
 set(CMAKE_LIBRARY_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR}/lib)
 set(CMAKE_RUNTIME_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR}/bin)
 
+add_library(Spatial SHARED IMPORTED)
+set_target_properties(Spatial PROPERTIES IMPORTED_LOCATION "/usr/local/lib/libSpatial.so")
+
 add_subdirectory(vasco)
 
 install(DIRECTORY
