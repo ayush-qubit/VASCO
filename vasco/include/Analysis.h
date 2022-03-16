@@ -86,11 +86,6 @@ public:
         // Referred: functional_hash.h (line 114)
         // Referred: functional_hash.h (line 110)
         return static_cast<size_t>(P.first) ^ reinterpret_cast<size_t>(P.second);
-
-        // NOTE: Commented this as this will be too slow
-        // std::string s1 = std::to_string(P.first);
-        // std::string s2 = std::to_string((long) P.second);
-        // return stold(s1 + s2);
     }
 
     auto operator()(const pair<int, Instruction *> &P) const {
@@ -99,11 +94,6 @@ public:
         // Referred: functional_hash.h (line 114)
         // Referred: functional_hash.h (line 110)
         return static_cast<size_t>(P.first) ^ reinterpret_cast<size_t>(P.second);
-
-        // NOTE: Commented this as this will be too slow
-        // std::string s1 = std::to_string(P.first);
-        // std::string s2 = std::to_string((long) P.second);
-        // return stold(s1 + s2);
     }
 };
 
@@ -125,6 +115,7 @@ private:
     bool debug{};
     bool SLIM{};
     float total_memory{}, vm{}, rss{};
+    bool measuretime,measurememory;
 
     void printLine(int);
 
@@ -290,6 +281,8 @@ Analysis<F,B,INSTRUCTION>::Analysis(bool debug,bool SLIM) {
     this->debug = debug;
     this->direction = "";
     this->SLIM = SLIM;
+    this->measurememory = false;
+    this->measuretime = false;
 }
 
 template<class F, class B, class INSTRUCTION>
@@ -300,6 +293,8 @@ Analysis<F,B,INSTRUCTION>::Analysis(bool debug, const string &fileName, bool SLI
     freopen(fileName.c_str(), "w", stdout);
     this->direction = "";
     this->SLIM = SLIM;
+    this->measurememory = false;
+    this->measuretime = false;
 }
 
 template<class F, class B, class INSTRUCTION>
@@ -439,8 +434,6 @@ B Analysis<F,B,INSTRUCTION>::getPurelyLocalComponentBackward(const B& dfv) const
     llvm::outs()<<"\nThis function getPurelyLocalComponentBackward() has not been implemented. EXITING !!\n";
     exit(-1);  
 }
-
-
 
 template<class F, class B, class INSTRUCTION>
 B Analysis<F,B,INSTRUCTION>::getMixedComponentBackward(const B& dfv) const
@@ -657,9 +650,13 @@ int Analysis<F,B,INSTRUCTION>::getNumberOfContexts() {
 template<class F, class B, class INSTRUCTION>
 void Analysis<F,B,INSTRUCTION>::doAnalysis(Module &M) {
     setCurrentModule(&M);
-    // ======================================================================================
-
     //====================================SPLITTING========================================
+#ifdef time
+    this->measuretime = true;
+#endif
+#ifdef memory
+    this->measurememory = true;
+#endif
     auto start = high_resolution_clock::now();
     startSplitting();
     auto stop = high_resolution_clock::now();
@@ -959,8 +956,10 @@ void Analysis<F,B,INSTRUCTION>::INIT_CONTEXT(llvm::Function *function, const std
             setBackwardOut(current_context_label,&context_object->getFunction()->back(),getBackwardInflowForThisContext(current_context_label));
         }
     }
-    process_mem_usage(this->vm, this->rss);
-    this->total_memory = max(this->total_memory, this->vm);
+    if(this->measurememory) {
+        process_mem_usage(this->vm, this->rss);
+        this->total_memory = max(this->total_memory, this->vm);
+    }
 }
 
 template<class F, class B, class INSTRUCTION>
@@ -1033,17 +1032,17 @@ void Analysis<F,B,INSTRUCTION>::doAnalysisForward() {
         if (contains_a_method_call) {
             //step 11
             if(SLIM) {
-                F prev = getForwardComponentAtInOfThisInstruction(funcBBInsMap[{f,bb}][0]);
+                F prev = getForwardComponentAtInOfThisInstruction(funcBBInsMap[{f,bb}].front);
                 for(auto &index : funcBBInsMap[{f,bb}]) {
                     auto &inst = globalInstrIndexList[index];
                     if(inst.getCall()) {
 
                     } else{
                         if (debug) {
-                            printLine(current_context_label);
-                            llvm::outs() << *inst << "\n";
-                            llvm::outs() << "IN: ";
-                            printDataFlowValuesForward(prev);
+//                            printLine(current_context_label);
+//                            llvm::outs() << *inst << "\n";
+//                            llvm::outs() << "IN: ";
+//                            printDataFlowValuesForward(prev);
                         }
                         setForwardComponentAtInOfThisInstruction(&inst, prev);
                         F new_prev = computeOutFromIn(inst);
@@ -1220,6 +1219,10 @@ void Analysis<F,B,INSTRUCTION>::doAnalysisForward() {
                     }
                 }
             }
+        }
+        if(this->measurememory) {
+            process_mem_usage(this->vm, this->rss);
+            this->total_memory = max(this->total_memory, this->vm);
         }
     }
 }
@@ -1405,7 +1408,7 @@ void Analysis<F,B,INSTRUCTION>::doAnalysisBackward() {
         //step 10
         bool contains_a_method_call = false;
         if(SLIM) {
-            for(auto &index : funcBBInsMap[{f,&bb}]) {
+            for(auto &index : funcBBInsMap[{f,bb}]) {
                 auto &inst = globalInstrIndexList[index];
                 if(inst.getCall()) {
                     // Todo retrive function from call instruction
@@ -1429,7 +1432,7 @@ void Analysis<F,B,INSTRUCTION>::doAnalysisBackward() {
             B prev = getOut(current_pair.first, current_pair.second).second;
             //step 11
             if(SLIM) {
-                for(auto &index : getReverseList(funcBBInsMap[{f,&bb}])) {
+                for(auto &index : getReverseList(funcBBInsMap[{f,bb}])) {
                     auto &inst = globalInstrIndexList[index];
                     if(inst.getCall()) {
                         // Todo retrive function from call instruction
@@ -1599,8 +1602,10 @@ void Analysis<F,B,INSTRUCTION>::doAnalysisBackward() {
                 }
             }
         }
-        process_mem_usage(this->vm, this->rss);
-        this->total_memory = max(this->total_memory, this->vm);
+        if(this->measurememory) {
+            process_mem_usage(this->vm, this->rss);
+            this->total_memory = max(this->total_memory, this->vm);
+        }
     }
 }
 
