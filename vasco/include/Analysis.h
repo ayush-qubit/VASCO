@@ -651,10 +651,10 @@ template<class F, class B, class INSTRUCTION>
 void Analysis<F,B,INSTRUCTION>::doAnalysis(Module &M) {
     setCurrentModule(&M);
     //====================================SPLITTING========================================
-#ifdef time
+#ifdef Time
     this->measuretime = true;
 #endif
-#ifdef memory
+#ifdef Memory
     this->measurememory = true;
 #endif
     auto start = high_resolution_clock::now();

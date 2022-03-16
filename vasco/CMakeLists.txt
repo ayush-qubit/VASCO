@@ -7,7 +7,7 @@ add_library(Driver SHARED
 	src/Analysis.cpp
         include/Context.h)
 set_target_properties(Driver PROPERTIES
-	COMPILE_FLAGS "-std=c++14 -fno-rtti -g"
+	COMPILE_FLAGS "-std=c++14 -fno-rtti -g -D Memory"
 )
 
 target_link_libraries(Driver PUBLIC Spatial)
