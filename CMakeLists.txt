@@ -22,4 +22,6 @@ add_subdirectory(vasco)
 
 install(DIRECTORY
     vasco/include/ DESTINATION ${CMAKE_INSTALL_INCLUDEDIR}/${PROJECT_NAME})
+install(DIRECTORY
+TransformIRPass/ DESTINATION ${CMAKE_INSTALL_INCLUDEDIR}/${PROJECT_NAME})
 

@@ -683,7 +683,6 @@ void Analysis<F,B,INSTRUCTION>::doAnalysis(Module &M) {
             }
             setCurrentAnalysisDirection(0);
             INIT_CONTEXT(fptr, {forward_inflow_bi, backward_inflow_bi}, {forward_outflow_bi, backward_outflow_bi});
-//            INIT_CONTEXT(make_pair(fptr,make_pair(make_pair(forward_inflow_bi,backward_inflow_bi),make_pair(forward_outflow_bi,backward_outflow_bi))));
         }
     }
     if (std::is_same<F, NoAnalysisType>::value) {
@@ -1036,13 +1035,12 @@ void Analysis<F,B,INSTRUCTION>::doAnalysisForward() {
                 for(auto &index : funcBBInsMap[{f,bb}]) {
                     auto &inst = globalInstrIndexList[index];
                     if(inst.getCall()) {
-
+                        
                     } else{
                         if (debug) {
-//                            printLine(current_context_label);
-//                            llvm::outs() << *inst << "\n";
-//                            llvm::outs() << "IN: ";
-//                            printDataFlowValuesForward(prev);
+                            printLine(current_context_label);
+                            llvm::outs() << "IN: ";
+                            printDataFlowValuesForward(prev);
                         }
                         setForwardComponentAtInOfThisInstruction(&inst, prev);
                         F new_prev = computeOutFromIn(inst);
