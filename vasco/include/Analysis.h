@@ -44,12 +44,8 @@ void process_mem_usage(float &vm_usage, float &resident_set) {
     vm_usage = 0.0;
     resident_set = 0.0;
 
-    // 'file' stat seems to give the most reliable results
-    //
     ifstream stat_stream("/proc/self/stat", ios_base::in);
 
-    // dummy vars for leading entries in stat that we don't care about
-    //
     string pid, comm, state, ppid, pgrp, session, tty_nr;
     string tpgid, flags, minflt, cminflt, majflt, cmajflt;
     string utime, stime, cutime, cstime, priority, nice;
@@ -63,10 +59,10 @@ void process_mem_usage(float &vm_usage, float &resident_set) {
     stat_stream >> pid >> comm >> state >> ppid >> pgrp >> session >> tty_nr
                 >> tpgid >> flags >> minflt >> cminflt >> majflt >> cmajflt
                 >> utime >> stime >> cutime >> cstime >> priority >> nice
-                >> O >> itrealvalue >> starttime >> vsize >> rss; // don't care about the rest
+                >> O >> itrealvalue >> starttime >> vsize >> rss;
 
     stat_stream.close();
-    long page_size_kb = sysconf(_SC_PAGE_SIZE) / 1024; // in case x86-64 is configured to use 2MB pages
+    long page_size_kb = sysconf(_SC_PAGE_SIZE) / 1024;
     vm_usage = static_cast<float>(vsize) / 1024.0f;
     resident_set = static_cast<float>(rss * page_size_kb);
 }
@@ -97,14 +93,16 @@ public:
     }
 };
 
-template<class F, class B, class INSTRUCTION = llvm::Instruction>
+template<class F, class B>
 class Analysis : public Transform {
 private:
     Module *current_module;
     int context_label_counter;
     int current_analysis_direction{}; //0:initial pass, 1:forward, 2:backward
     int processing_context_label{};
-    std::unordered_map<int,unordered_map<INSTRUCTION *,pair<F,B>>> IN, OUT;
+    std::unordered_map<int,unordered_map<llvm::Instruction *,pair<F,B>>> IN, OUT;
+    std::unordered_map<int,unordered_map<fetchLR *,pair<F,B>>> SLIM_IN, SLIM_OUT;
+    
     std::string direction;
     unordered_map<int, Context<F,B> *> context_label_to_context_object_map;
 
@@ -125,7 +123,8 @@ protected:
     Worklist<pair<int,BasicBlock *>,HashFunction> backward_worklist, forward_worklist;
 
     // mapping from (context label,call site) to target context label
-    unordered_map<pair<int, INSTRUCTION *>, int, HashFunction> context_transition_graph; //graph
+    unordered_map<pair<int, llvm::Instruction *>, int, HashFunction> context_transition_graph; //graph
+    unordered_map<pair<int, fetchLR *>, int, HashFunction> SLIM_context_transition_graph; //graph
 public:
     explicit Analysis(bool,bool);
 
@@ -163,7 +162,8 @@ public:
 
     void printWorklistMaps();
 
-    bool isAnIgnorableDebugInstruction(INSTRUCTION *);
+    bool isAnIgnorableDebugInstruction(llvm::Instruction *);
+    bool isAnIgnorableDebugInstruction(fetchLR *);
 
     void startSplitting();
 
@@ -173,21 +173,29 @@ public:
 
     Module *getCurrentModule();
 
-    F getForwardComponentAtInOfThisInstruction(INSTRUCTION &I);
+    F getForwardComponentAtInOfThisInstruction(llvm::Instruction &I);
+    F getForwardComponentAtInOfThisInstruction(fetchLR &I);
 
-    B getBackwardComponentAtInOfThisInstruction(INSTRUCTION &I);
+    F getForwardComponentAtOutOfThisInstruction(llvm::Instruction &I);
+    F getForwardComponentAtOutOfThisInstruction(fetchLR &I);
 
-    F getForwardComponentAtOutOfThisInstruction(INSTRUCTION &I);
+    B getBackwardComponentAtInOfThisInstruction(llvm::Instruction &I);
+    B getBackwardComponentAtInOfThisInstruction(fetchLR &I);
 
-    B getBackwardComponentAtOutOfThisInstruction(INSTRUCTION &I);
+    B getBackwardComponentAtOutOfThisInstruction(llvm::Instruction &I);
+    B getBackwardComponentAtOutOfThisInstruction(fetchLR &I);
 
-    void setForwardComponentAtInOfThisInstruction(INSTRUCTION *I, const F& in_value);
+    void setForwardComponentAtInOfThisInstruction(llvm::Instruction *I, const F& in_value);
+    void setForwardComponentAtInOfThisInstruction(fetchLR *I, const F& in_value);
 
-    void setBackwardComponentAtInOfThisInstruction(INSTRUCTION *I, const B& in_value);
+    void setBackwardComponentAtInOfThisInstruction(llvm::Instruction *I, const B& in_value);
+    void setBackwardComponentAtInOfThisInstruction(fetchLR *I, const B& in_value);
 
-    void setForwardComponentAtOutOfThisInstruction(INSTRUCTION *I, const F& out_value);
+    void setForwardComponentAtOutOfThisInstruction(llvm::Instruction *I, const F& out_value);
+    void setForwardComponentAtOutOfThisInstruction(fetchLR *I, const F& out_value);
 
-    void setBackwardComponentAtOutOfThisInstruction(INSTRUCTION *I, const B& out_value);
+    void setBackwardComponentAtOutOfThisInstruction(llvm::Instruction *I, const B& out_value);
+    void setBackwardComponentAtOutOfThisInstruction(fetchLR *I, const B& out_value);
 
     pair<F, B> getIn(int, llvm::BasicBlock *);
 
@@ -229,7 +237,8 @@ public:
     virtual pair<F, B> CallOutflowFunction(int, Function *, BasicBlock *, const F &, const B &, const F &, const B &);
 
 
-    virtual F computeOutFromIn(INSTRUCTION &I);
+    virtual F computeOutFromIn(llvm::Instruction &I);
+    virtual F computeOutFromIn(fetchLR &I);
 
     virtual F getBoundaryInformationForward();//{}
     virtual F getInitialisationValueForward();//{}
@@ -243,7 +252,8 @@ public:
 
     virtual void printDataFlowValuesForward(const F &dfv) const {}
 
-    virtual B computeInFromOut(INSTRUCTION &I);
+    virtual B computeInFromOut(llvm::Instruction &I);
+    virtual B computeInFromOut(fetchLR &I);
 
     virtual B getBoundaryInformationBackward();//{}
     virtual B getInitialisationValueBackward();//{}
@@ -260,8 +270,8 @@ public:
 };
 
 //========================================================================================
-template<class F, class B, class INSTRUCTION>
-void Analysis<F,B,INSTRUCTION>::printLine(int label) {
+template<class F, class B>
+void Analysis<F,B>::printLine(int label) {
     string Name = "";
     if (current_analysis_direction == 1) {
         Name = "FORWARD";
@@ -274,8 +284,8 @@ void Analysis<F,B,INSTRUCTION>::printLine(int label) {
 }
 
 
-template<class F, class B, class INSTRUCTION>
-Analysis<F,B,INSTRUCTION>::Analysis(bool debug,bool SLIM) {
+template<class F, class B>
+Analysis<F,B>::Analysis(bool debug,bool SLIM) {
     current_module = nullptr;
     context_label_counter = -1;
     this->debug = debug;
@@ -285,8 +295,8 @@ Analysis<F,B,INSTRUCTION>::Analysis(bool debug,bool SLIM) {
     this->measuretime = false;
 }
 
-template<class F, class B, class INSTRUCTION>
-Analysis<F,B,INSTRUCTION>::Analysis(bool debug, const string &fileName, bool SLIM) {
+template<class F, class B>
+Analysis<F,B>::Analysis(bool debug, const string &fileName, bool SLIM) {
     current_module = nullptr;
     context_label_counter = -1;
     this->debug = debug;
@@ -297,175 +307,193 @@ Analysis<F,B,INSTRUCTION>::Analysis(bool debug, const string &fileName, bool SLI
     this->measuretime = false;
 }
 
-template<class F, class B, class INSTRUCTION>
-Analysis<F,B,INSTRUCTION>::~Analysis() {
+template<class F, class B>
+Analysis<F,B>::~Analysis() {
     llvm::outs() << "Memory consume: ";
     printMemory(this->total_memory);
 }
 
-template<class F, class B, class INSTRUCTION>
-int Analysis<F,B,INSTRUCTION>::getContextLabelCounter() {
+template<class F, class B>
+int Analysis<F,B>::getContextLabelCounter() {
     return context_label_counter;
 }
 
-template<class F, class B, class INSTRUCTION>
-void Analysis<F,B,INSTRUCTION>::setContextLabelCounter(int new_context_label_counter) {
+template<class F, class B>
+void Analysis<F,B>::setContextLabelCounter(int new_context_label_counter) {
     context_label_counter = new_context_label_counter;
 }
 
-template<class F, class B, class INSTRUCTION>
-int Analysis<F,B,INSTRUCTION>::getCurrentAnalysisDirection() {
+template<class F, class B>
+int Analysis<F,B>::getCurrentAnalysisDirection() {
     return current_analysis_direction;
 }
 
-template<class F, class B, class INSTRUCTION>
-void Analysis<F,B,INSTRUCTION>::setCurrentAnalysisDirection(int direction) {
+template<class F, class B>
+void Analysis<F,B>::setCurrentAnalysisDirection(int direction) {
     current_analysis_direction = direction;
 }
 
-template<class F, class B, class INSTRUCTION>
-int Analysis<F,B,INSTRUCTION>::getProcessingContextLabel() const {
+template<class F, class B>
+int Analysis<F,B>::getProcessingContextLabel() const {
     return processing_context_label;
 }
 
-template<class F, class B, class INSTRUCTION>
-void Analysis<F,B,INSTRUCTION>::setProcessingContextLabel(int label) {
+template<class F, class B>
+void Analysis<F,B>::setProcessingContextLabel(int label) {
     processing_context_label = label;
 }
 
-template<class F, class B, class INSTRUCTION>
-bool Analysis<F,B,INSTRUCTION>::isAnIgnorableDebugInstruction(INSTRUCTION *inst) {
+template<class F, class B>
+bool Analysis<F,B>::isAnIgnorableDebugInstruction(llvm::Instruction *inst) {
     if (isa<DbgDeclareInst>(inst) || isa<DbgValueInst>(inst)) {
         return true;
     }
     return false;
 }
 
-template<class F, class B, class INSTRUCTION>
-Module *Analysis<F,B,INSTRUCTION>::getCurrentModule() {
+template<class F, class B>
+bool Analysis<F,B>::isAnIgnorableDebugInstruction(fetchLR *inst) {
+    return false;
+}
+
+template<class F, class B>
+Module *Analysis<F,B>::getCurrentModule() {
     return current_module;
 }
 
-template<class F, class B, class INSTRUCTION>
-void Analysis<F,B,INSTRUCTION>::setCurrentModule(Module *m) {
+template<class F, class B>
+void Analysis<F,B>::setCurrentModule(Module *m) {
     current_module = m;
 }
 
-template<class F, class B, class INSTRUCTION>
-B Analysis<F,B,INSTRUCTION>::computeInFromOut(INSTRUCTION &I) {
+template<class F, class B>
+B Analysis<F,B>::computeInFromOut(llvm::Instruction &I) {
     llvm::outs() << "\nThis function computeInFromOut() has not been implemented. EXITING !!\n";
     exit(-1);
 }
 
-template<class F, class B, class INSTRUCTION>
-F Analysis<F,B,INSTRUCTION>::computeOutFromIn(INSTRUCTION &I) {
+template<class F, class B>
+B Analysis<F,B>::computeInFromOut(fetchLR &I) {
+    llvm::outs() << "\nThis function computeInFromOut() has not been implemented. EXITING !!\n";
+    exit(-1);
+}
+
+
+template<class F, class B>
+F Analysis<F,B>::computeOutFromIn(llvm::Instruction &I) {
     llvm::outs() << "\nThis function computeOutFromIn() has not been implemented. EXITING !!\n";
     exit(-1);
 }
 
-template<class F, class B, class INSTRUCTION>
-F Analysis<F,B,INSTRUCTION>::getBoundaryInformationForward() {
+template<class F, class B>
+F Analysis<F,B>::computeOutFromIn(fetchLR &I) {
+    llvm::outs() << "\nThis function computeOutFromIn() has not been implemented. EXITING !!\n";
+    exit(-1);
+}
+
+template<class F, class B>
+F Analysis<F,B>::getBoundaryInformationForward() {
     llvm::outs() << "\nThis function getBoundaryInformationForward() has not been implemented. EXITING !!\n";
     exit(-1);
 }
 
-template<class F, class B, class INSTRUCTION>
-B Analysis<F,B,INSTRUCTION>::getBoundaryInformationBackward() {
+template<class F, class B>
+B Analysis<F,B>::getBoundaryInformationBackward() {
     llvm::outs() << "\nThis function getBoundaryInformationBackward() has not been implemented. EXITING !!\n";
     exit(-1);
 }
 
-template<class F, class B, class INSTRUCTION>
-F Analysis<F,B,INSTRUCTION>::getInitialisationValueForward() {
+template<class F, class B>
+F Analysis<F,B>::getInitialisationValueForward() {
     llvm::outs() << "\nThis function getInitialisationValueForward() has not been implemented. EXITING !!\n";
     exit(-1);
 }
 
-template<class F, class B, class INSTRUCTION>
-B Analysis<F,B,INSTRUCTION>::getInitialisationValueBackward() {
+template<class F, class B>
+B Analysis<F,B>::getInitialisationValueBackward() {
     llvm::outs() << "\nThis function getInitialisationValueBackward() has not been implemented. EXITING !!\n";
     exit(-1);
 }
 
-template<class F, class B, class INSTRUCTION>
-F Analysis<F,B,INSTRUCTION>::performMeetForward(const F& d1, const F& d2) const {
+template<class F, class B>
+F Analysis<F,B>::performMeetForward(const F& d1, const F& d2) const {
     llvm::outs() << "\nThis function performMeetForward() has not been implemented. EXITING !!\n";
     exit(-1);
 }
 
-template<class F, class B, class INSTRUCTION>
-B Analysis<F,B,INSTRUCTION>::performMeetBackward(const B& d1, const B& d2) const {
+template<class F, class B>
+B Analysis<F,B>::performMeetBackward(const B& d1, const B& d2) const {
     llvm::outs() << "\nThis function performMeetBackward() has not been implemented. EXITING !!\n";
     exit(-1);
 }
 
-template<class F, class B, class INSTRUCTION>
-bool Analysis<F,B,INSTRUCTION>::EqualDataFlowValuesForward(const F &d1, const F &d2) const {
+template<class F, class B>
+bool Analysis<F,B>::EqualDataFlowValuesForward(const F &d1, const F &d2) const {
     llvm::outs() << "\nThis function EqualDataFlowValuesForward() has not been implemented. EXITING !!\n";
     exit(-1);
 }
 
-template<class F, class B, class INSTRUCTION>
-bool Analysis<F,B,INSTRUCTION>::EqualDataFlowValuesBackward(const B& d1, const B& d2) const {
+template<class F, class B>
+bool Analysis<F,B>::EqualDataFlowValuesBackward(const B& d1, const B& d2) const {
     llvm::outs() << "\nThis function EqualDataFlowValuesBackward() has not been implemented. EXITING !!\n";
     exit(-1);
 }
 
-template<class F, class B, class INSTRUCTION>
-B Analysis<F,B,INSTRUCTION>::getPurelyGlobalComponentBackward(const B& dfv) const {
+template<class F, class B>
+B Analysis<F,B>::getPurelyGlobalComponentBackward(const B& dfv) const {
     llvm::outs() << "\nThis function getPurelyGlobalComponentBackward() has not been implemented. EXITING !!\n";
     exit(-1);
 }
 
-template<class F, class B, class INSTRUCTION>
-F Analysis<F,B,INSTRUCTION>::getPurelyGlobalComponentForward(const F& dfv) const {
+template<class F, class B>
+F Analysis<F,B>::getPurelyGlobalComponentForward(const F& dfv) const {
     llvm::outs() << "\nThis function getPurelyGlobalComponentForward() has not been implemented. EXITING !!\n";
     exit(-1);
 }
 
-template<class F, class B, class INSTRUCTION>
-F Analysis<F,B,INSTRUCTION>::getPurelyLocalComponentForward(const F& dfv) const {
+template<class F, class B>
+F Analysis<F,B>::getPurelyLocalComponentForward(const F& dfv) const {
     llvm::outs() << "\nThis function getPurelyLocalComponentForward() has not been implemented. EXITING !!\n";
     exit(-1);
 }
-template<class F, class B, class INSTRUCTION>
-B Analysis<F,B,INSTRUCTION>::getPurelyLocalComponentBackward(const B& dfv) const
+template<class F, class B>
+B Analysis<F,B>::getPurelyLocalComponentBackward(const B& dfv) const
 {
     llvm::outs()<<"\nThis function getPurelyLocalComponentBackward() has not been implemented. EXITING !!\n";
     exit(-1);  
 }
 
-template<class F, class B, class INSTRUCTION>
-B Analysis<F,B,INSTRUCTION>::getMixedComponentBackward(const B& dfv) const
+template<class F, class B>
+B Analysis<F,B>::getMixedComponentBackward(const B& dfv) const
 {
     llvm::outs()<<"\nThis function getMixedComponentBackward() has not been implemented. EXITING !!\n";
     exit(-1);
 }
 
-template<class F, class B, class INSTRUCTION>
-F Analysis<F,B,INSTRUCTION>::getMixedComponentForward(const F& dfv) const
+template<class F, class B>
+F Analysis<F,B>::getMixedComponentForward(const F& dfv) const
 {
     llvm::outs()<<"\nThis function getMixedComponentForward() has not been implemented. EXITING !!\n";
     exit(-1);
 }
 
-template<class F, class B, class INSTRUCTION>
-B Analysis<F,B,INSTRUCTION>::getCombinedValuesAtCallBackward(const B& dfv1, const B& dfv2) const
+template<class F, class B>
+B Analysis<F,B>::getCombinedValuesAtCallBackward(const B& dfv1, const B& dfv2) const
 {
     llvm::outs()<<"\nThis function getCombinedValuesAtCallBackward() has not been implemented. EXITING !!\n";
     exit(-1);
 }
 
-template<class F, class B, class INSTRUCTION>
-F Analysis<F,B,INSTRUCTION>::getCombinedValuesAtCallForward(const F& dfv1, const F& dfv2) const
+template<class F, class B>
+F Analysis<F,B>::getCombinedValuesAtCallForward(const F& dfv1, const F& dfv2) const
 {
     llvm::outs()<<"\nThis function getCombinedValuesAtCallForward() has not been implemented. EXITING !!\n";
     exit(-1);
 }
 //========================================================================================
 
-template<class F, class B, class INSTRUCTION>
-void Analysis<F,B,INSTRUCTION>::printModule(Module &M) {
+template<class F, class B>
+void Analysis<F,B>::printModule(Module &M) {
     llvm::outs() << "--------------------------------------------" << "\n";
     for (Function &Func : M) {
         llvm::outs() << "FUNCTION NAME: ";
@@ -484,100 +512,148 @@ void Analysis<F,B,INSTRUCTION>::printModule(Module &M) {
 }
 
 
-template<class F, class B, class INSTRUCTION>
+template<class F, class B>
 pair<F, B>
-Analysis<F,B,INSTRUCTION>::CallInflowFunction(int context_label, Function *target_function, BasicBlock *bb, const F& a1, const B& d1) {
+Analysis<F,B>::CallInflowFunction(int context_label, Function *target_function, BasicBlock *bb, const F& a1, const B& d1) {
     llvm::outs() << "\nThis function CallInflowFunction() has not been implemented. EXITING !!\n";
     exit(-1);
 }
 
-template<class F, class B, class INSTRUCTION>
+template<class F, class B>
 pair<F, B>
-Analysis<F,B,INSTRUCTION>::CallOutflowFunction(int context_label, Function *target_function, BasicBlock *bb, const F& a3, const B& d3, const F& a1,
+Analysis<F,B>::CallOutflowFunction(int context_label, Function *target_function, BasicBlock *bb, const F& a3, const B& d3, const F& a1,
                                     const B& d1) {
     llvm::outs() << "\nThis function CallOutflowFunction() has not been implemented. EXITING !!\n";
     exit(-1);
 }
 
 //=====================setter and getters for IN-OUT Maps==================================
-template<class F, class B, class INSTRUCTION>
-F Analysis<F,B,INSTRUCTION>::getForwardComponentAtInOfThisInstruction(INSTRUCTION &I) {
+template<class F, class B>
+F Analysis<F,B>::getForwardComponentAtInOfThisInstruction(llvm::Instruction &I) {
     int label = getProcessingContextLabel();
     return IN[label][&I].first;
 }
 
-template<class F, class B, class INSTRUCTION>
-F Analysis<F,B,INSTRUCTION>::getForwardComponentAtOutOfThisInstruction(INSTRUCTION &I) {
+template<class F, class B>
+F Analysis<F,B>::getForwardComponentAtInOfThisInstruction(fetchLR &I) {
+    int label = getProcessingContextLabel();
+    return SLIM_IN[label][&I].first;
+}
+
+template<class F, class B>
+F Analysis<F,B>::getForwardComponentAtOutOfThisInstruction(llvm::Instruction &I) {
     int label = getProcessingContextLabel();
     return OUT[label][&I].first;
 }
 
-template<class F, class B, class INSTRUCTION>
-B Analysis<F,B,INSTRUCTION>::getBackwardComponentAtInOfThisInstruction(INSTRUCTION &I) {
+template<class F, class B>
+F Analysis<F,B>::getForwardComponentAtOutOfThisInstruction(fetchLR &I) {
+    int label = getProcessingContextLabel();
+    return SLIM_OUT[label][&I].first;
+}
+
+template<class F, class B>
+B Analysis<F,B>::getBackwardComponentAtInOfThisInstruction(llvm::Instruction &I) {
     int label = getProcessingContextLabel();
     return IN[label][&I].second;
 }
 
-template<class F, class B, class INSTRUCTION>
-B Analysis<F,B,INSTRUCTION>::getBackwardComponentAtOutOfThisInstruction(INSTRUCTION &I) {
+template<class F, class B>
+B Analysis<F,B>::getBackwardComponentAtInOfThisInstruction(fetchLR &I) {
+    int label = getProcessingContextLabel();
+    return SLIM_IN[label][&I].second;
+}
+
+template<class F, class B>
+B Analysis<F,B>::getBackwardComponentAtOutOfThisInstruction(llvm::Instruction &I) {
     int label = getProcessingContextLabel();
     return OUT[label][&I].second;
 }
 
-template<class F, class B, class INSTRUCTION>
-void Analysis<F,B,INSTRUCTION>::setForwardComponentAtInOfThisInstruction(INSTRUCTION *I,const F& in_value) {
+template<class F, class B>
+B Analysis<F,B>::getBackwardComponentAtOutOfThisInstruction(fetchLR &I) {
+    int label = getProcessingContextLabel();
+    return SLIM_OUT[label][&I].second;
+}
+
+template<class F, class B>
+void Analysis<F,B>::setForwardComponentAtInOfThisInstruction(llvm::Instruction *I,const F& in_value) {
     int label = getProcessingContextLabel();
     IN[label][I].first = in_value;
 }
 
-template<class F, class B, class INSTRUCTION>
-void Analysis<F,B,INSTRUCTION>::setForwardComponentAtOutOfThisInstruction(INSTRUCTION *I, const F& out_value) {
+template<class F, class B>
+void Analysis<F,B>::setForwardComponentAtInOfThisInstruction(fetchLR *I,const F& in_value) {
+    int label = getProcessingContextLabel();
+    SLIM_IN[label][I].first = in_value;
+}
+
+template<class F, class B>
+void Analysis<F,B>::setForwardComponentAtOutOfThisInstruction(llvm::Instruction *I, const F& out_value) {
     int label = getProcessingContextLabel();
     OUT[label][I].first = out_value;
 }
 
-template<class F, class B, class INSTRUCTION>
-void Analysis<F,B,INSTRUCTION>::setBackwardComponentAtInOfThisInstruction(INSTRUCTION *I, const B& in_value) {
+template<class F, class B>
+void Analysis<F,B>::setForwardComponentAtOutOfThisInstruction(fetchLR *I, const F& out_value) {
+    int label = getProcessingContextLabel();
+    SLIM_OUT[label][I].first = out_value;
+}
+
+template<class F, class B>
+void Analysis<F,B>::setBackwardComponentAtInOfThisInstruction(llvm::Instruction *I, const B& in_value) {
     int label = getProcessingContextLabel();
     IN[label][I].second = in_value;
 }
 
-template<class F, class B, class INSTRUCTION>
-void Analysis<F,B,INSTRUCTION>::setBackwardComponentAtOutOfThisInstruction(INSTRUCTION *I, const B& out_value) {
+template<class F, class B>
+void Analysis<F,B>::setBackwardComponentAtInOfThisInstruction(fetchLR *I, const B& in_value) {
+    int label = getProcessingContextLabel();
+    SLIM_IN[label][I].second = in_value;
+}
+
+template<class F, class B>
+void Analysis<F,B>::setBackwardComponentAtOutOfThisInstruction(llvm::Instruction *I, const B& out_value) {
     int label = getProcessingContextLabel();
     OUT[label][I].second = out_value;
 }
 
+template<class F, class B>
+void Analysis<F,B>::setBackwardComponentAtOutOfThisInstruction(fetchLR *I, const B& out_value) {
+    int label = getProcessingContextLabel();
+    SLIM_OUT[label][I].second = out_value;
+}
+
 //=====================setter and getters CS_BB==================================
 
-template<class F, class B, class INSTRUCTION>
-pair<F, B> Analysis<F,B,INSTRUCTION>::getIn(int label, llvm::BasicBlock *BB) {
+template<class F, class B>
+pair<F, B> Analysis<F,B>::getIn(int label, llvm::BasicBlock *BB) {
 //    return IN[{label,&(*BB->begin())}];
     return IN[label][&(*(BB->begin()))];
 }
 
-template<class F, class B, class INSTRUCTION>
-pair<F, B> Analysis<F,B,INSTRUCTION>::getOut(int label, llvm::BasicBlock *BB) {
+template<class F, class B>
+pair<F, B> Analysis<F,B>::getOut(int label, llvm::BasicBlock *BB) {
     return OUT[label][&(BB->back())];
 }
 
-template<class F, class B, class INSTRUCTION>
-void Analysis<F,B,INSTRUCTION>::setForwardIn(int label, llvm::BasicBlock *BB, const F& dataflowvalue) {
+template<class F, class B>
+void Analysis<F,B>::setForwardIn(int label, llvm::BasicBlock *BB, const F& dataflowvalue) {
     IN[label][&(*(BB->begin()))].first = dataflowvalue;
 }
 
-template<class F, class B, class INSTRUCTION>
-void Analysis<F,B,INSTRUCTION>::setForwardOut(int label, llvm::BasicBlock *BB, const F& dataflowvalue) {
+template<class F, class B>
+void Analysis<F,B>::setForwardOut(int label, llvm::BasicBlock *BB, const F& dataflowvalue) {
     OUT[label][&(BB->back())].first = dataflowvalue;
 }
 
-template<class F, class B, class INSTRUCTION>
-void Analysis<F,B,INSTRUCTION>::setBackwardIn(int label, llvm::BasicBlock *BB, const B& dataflowvalue) {
+template<class F, class B>
+void Analysis<F,B>::setBackwardIn(int label, llvm::BasicBlock *BB, const B& dataflowvalue) {
     IN[label][&(*(BB->begin()))].second = dataflowvalue;
 }
 
-template<class F, class B, class INSTRUCTION>
-void Analysis<F,B,INSTRUCTION>::setBackwardOut(int label, llvm::BasicBlock *BB, const B& dataflowvalue) {
+template<class F, class B>
+void Analysis<F,B>::setBackwardOut(int label, llvm::BasicBlock *BB, const B& dataflowvalue) {
     OUT[label][&(BB->back())].second = dataflowvalue;
 }
 
@@ -587,68 +663,68 @@ void Analysis<F,B,INSTRUCTION>::setBackwardOut(int label, llvm::BasicBlock *BB, 
 
 
 //=====================setter and getters for context objects==================================
-template<class F, class B, class INSTRUCTION>
-F Analysis<F,B,INSTRUCTION>::getForwardInflowForThisContext(int context_label) {
+template<class F, class B>
+F Analysis<F,B>::getForwardInflowForThisContext(int context_label) {
 //    return context_label_to_context_object_map[context_label].second.first.first;
     return context_label_to_context_object_map[context_label]->getInflowValue().first;
 }
 
-template<class F, class B, class INSTRUCTION>
-B Analysis<F,B,INSTRUCTION>::getBackwardInflowForThisContext(int context_label) {
+template<class F, class B>
+B Analysis<F,B>::getBackwardInflowForThisContext(int context_label) {
 //    return context_label_to_context_object_map[context_label].second.first.second;
     return context_label_to_context_object_map[context_label]->getInflowValue().second;
 }
 
-template<class F, class B, class INSTRUCTION>
-F Analysis<F,B,INSTRUCTION>::getForwardOutflowForThisContext(int context_label) {
+template<class F, class B>
+F Analysis<F,B>::getForwardOutflowForThisContext(int context_label) {
 //    return context_label_to_context_object_map[context_label].second.second.first;
     return context_label_to_context_object_map[context_label]->getOutflowValue().first;
 }
 
-template<class F, class B, class INSTRUCTION>
-B Analysis<F,B,INSTRUCTION>::getBackwardOutflowForThisContext(int context_label) {
+template<class F, class B>
+B Analysis<F,B>::getBackwardOutflowForThisContext(int context_label) {
 //    return context_label_to_context_object_map[context_label].second.second.second;
     return context_label_to_context_object_map[context_label]->getOutflowValue().second;
 }
 
 
-template<class F, class B, class INSTRUCTION>
-void Analysis<F,B,INSTRUCTION>::setForwardInflowForThisContext(int context_label, const F& forward_inflow) {
+template<class F, class B>
+void Analysis<F,B>::setForwardInflowForThisContext(int context_label, const F& forward_inflow) {
 //    context_label_to_context_object_map[context_label].second.first.first=forward_inflow;
     context_label_to_context_object_map[context_label]->setForwardInflow(forward_inflow);
 }
 
-template<class F, class B, class INSTRUCTION>
-void Analysis<F,B,INSTRUCTION>::setBackwardInflowForThisContext(int context_label, const B& backward_inflow) {
+template<class F, class B>
+void Analysis<F,B>::setBackwardInflowForThisContext(int context_label, const B& backward_inflow) {
 //    context_label_to_context_object_map[context_label].second.first.second=backward_inflow;
     context_label_to_context_object_map[context_label]->setBackwardInflow(backward_inflow);
 }
 
-template<class F, class B, class INSTRUCTION>
-void Analysis<F,B,INSTRUCTION>::setForwardOutflowForThisContext(int context_label, const F& forward_outflow) {
+template<class F, class B>
+void Analysis<F,B>::setForwardOutflowForThisContext(int context_label, const F& forward_outflow) {
 //    context_label_to_context_object_map[context_label].second.second.first=forward_outflow;
     context_label_to_context_object_map[context_label]->setForwardOutflow(forward_outflow);
 }
 
-template<class F, class B, class INSTRUCTION>
-void Analysis<F,B,INSTRUCTION>::setBackwardOutflowForThisContext(int context_label, const B& backward_outflow) {
+template<class F, class B>
+void Analysis<F,B>::setBackwardOutflowForThisContext(int context_label, const B& backward_outflow) {
 //    context_label_to_context_object_map[context_label].second.second.second=backward_outflow;
     context_label_to_context_object_map[context_label]->setBackwardOutflow(backward_outflow);
 }
 
-template<class F, class B, class INSTRUCTION>
-Function *Analysis<F,B,INSTRUCTION>::getFunctionAssociatedWithThisContext(int context_label) {
+template<class F, class B>
+Function *Analysis<F,B>::getFunctionAssociatedWithThisContext(int context_label) {
     return context_label_to_context_object_map[context_label]->getFunction();
 }
 
-template<class F, class B, class INSTRUCTION>
-int Analysis<F,B,INSTRUCTION>::getNumberOfContexts() {
+template<class F, class B>
+int Analysis<F,B>::getNumberOfContexts() {
     return ProcedureContext.size();
 }
 
 //================================================================================================
-template<class F, class B, class INSTRUCTION>
-void Analysis<F,B,INSTRUCTION>::doAnalysis(Module &M) {
+template<class F, class B>
+void Analysis<F,B>::doAnalysis(Module &M) {
     setCurrentModule(&M);
     //====================================SPLITTING========================================
 #ifdef Time
@@ -726,8 +802,8 @@ void Analysis<F,B,INSTRUCTION>::doAnalysis(Module &M) {
 }
 
 
-template<class F, class B, class INSTRUCTION>
-void Analysis<F,B,INSTRUCTION>::INIT_CONTEXT(llvm::Function *function, const std::pair<F, B>& Inflow, const std::pair<F, B>& Outflow) {
+template<class F, class B>
+void Analysis<F,B>::INIT_CONTEXT(llvm::Function *function, const std::pair<F, B>& Inflow, const std::pair<F, B>& Outflow) {
     context_label_counter++;
     Context<F,B> *context_object = new Context<F,B>(context_label_counter,function,Inflow,Outflow);
     int current_context_label = context_object->getLabel();
@@ -961,8 +1037,8 @@ void Analysis<F,B,INSTRUCTION>::INIT_CONTEXT(llvm::Function *function, const std
     }
 }
 
-template<class F, class B, class INSTRUCTION>
-void Analysis<F,B,INSTRUCTION>::doAnalysisForward() {
+template<class F, class B>
+void Analysis<F,B>::doAnalysisForward() {
     while (not forward_worklist.empty())//step 2
     {
         //step 3 and 4
@@ -1031,7 +1107,7 @@ void Analysis<F,B,INSTRUCTION>::doAnalysisForward() {
         if (contains_a_method_call) {
             //step 11
             if(SLIM) {
-                F prev = getForwardComponentAtInOfThisInstruction(funcBBInsMap[{f,bb}].front);
+                F prev = getForwardComponentAtInOfThisInstruction(globalInstrIndexList[funcBBInsMap[{f,bb}].front()]);
                 for(auto &index : funcBBInsMap[{f,bb}]) {
                     auto &inst = globalInstrIndexList[index];
                     if(inst.getCall()) {
@@ -1225,8 +1301,8 @@ void Analysis<F,B,INSTRUCTION>::doAnalysisForward() {
     }
 }
 
-template<class F, class B, class INSTRUCTION>
-F Analysis<F,B,INSTRUCTION>::NormalFlowFunctionForward(pair<int, BasicBlock *> current_pair_of_context_label_and_bb) {
+template<class F, class B>
+F Analysis<F,B>::NormalFlowFunctionForward(pair<int, BasicBlock *> current_pair_of_context_label_and_bb) {
     BasicBlock &b = *(current_pair_of_context_label_and_bb.second);
     F prev = getIn(current_pair_of_context_label_and_bb.first,
                    current_pair_of_context_label_and_bb.second).first;
@@ -1237,7 +1313,6 @@ F Analysis<F,B,INSTRUCTION>::NormalFlowFunctionForward(pair<int, BasicBlock *> c
             auto &inst = globalInstrIndexList[index];
             if (debug) {
                 printLine(current_pair_of_context_label_and_bb.first);
-                llvm::outs() << *inst << "\n";
                 llvm::outs() << "IN: ";
                 printDataFlowValuesForward(prev);
             }
@@ -1278,8 +1353,8 @@ F Analysis<F,B,INSTRUCTION>::NormalFlowFunctionForward(pair<int, BasicBlock *> c
 }
 
 
-template<class F, class B, class INSTRUCTION>
-int Analysis<F,B,INSTRUCTION>::check_if_context_already_exists(llvm::Function *function, const pair<F, B>& Inflow, const pair<F, B>& Outflow) {
+template<class F, class B>
+int Analysis<F,B>::check_if_context_already_exists(llvm::Function *function, const pair<F, B>& Inflow, const pair<F, B>& Outflow) {
     if (std::is_same<B, NoAnalysisType>::value) {
         //forward only
         for (auto set_itr:ProcedureContext) {
@@ -1351,13 +1426,13 @@ int Analysis<F,B,INSTRUCTION>::check_if_context_already_exists(llvm::Function *f
     return 0;
 }
 
-template<class F, class B, class INSTRUCTION>
-void Analysis<F,B,INSTRUCTION>::printWorklistMaps() {
+template<class F, class B>
+void Analysis<F,B>::printWorklistMaps() {
 
 }
 
-template<class F, class B, class INSTRUCTION>
-void Analysis<F,B,INSTRUCTION>::doAnalysisBackward() {
+template<class F, class B>
+void Analysis<F,B>::doAnalysisBackward() {
     while (not backward_worklist.empty())//step 2
     {
         //step 3 and 4
@@ -1607,8 +1682,8 @@ void Analysis<F,B,INSTRUCTION>::doAnalysisBackward() {
     }
 }
 
-template<class F, class B, class INSTRUCTION>
-B Analysis<F,B,INSTRUCTION>::NormalFlowFunctionBackward(pair<int, BasicBlock *> current_pair_of_context_label_and_bb) {
+template<class F, class B>
+B Analysis<F,B>::NormalFlowFunctionBackward(pair<int, BasicBlock *> current_pair_of_context_label_and_bb) {
     BasicBlock &b = *(current_pair_of_context_label_and_bb.second);
     B prev = getOut(current_pair_of_context_label_and_bb.first,
                     current_pair_of_context_label_and_bb.second).second;
@@ -1645,8 +1720,8 @@ B Analysis<F,B,INSTRUCTION>::NormalFlowFunctionBackward(pair<int, BasicBlock *> 
     return prev;
 }
 
-template<class F, class B, class INSTRUCTION>
-void Analysis<F,B,INSTRUCTION>::startSplitting() {
+template<class F, class B>
+void Analysis<F,B>::startSplitting() {
     for (Function &function : *(this->current_module)) {
         if (function.size() > 0) {
             performSplittingBB(function);
@@ -1655,8 +1730,8 @@ void Analysis<F,B,INSTRUCTION>::startSplitting() {
 }
 
 
-template<class F, class B, class INSTRUCTION>
-void Analysis<F,B,INSTRUCTION>::performSplittingBB(Function &function) {
+template<class F, class B>
+void Analysis<F,B>::performSplittingBB(Function &function) {
     int flag = 0;
     Instruction *I = nullptr;
     bool previousInstructionWasSplitted = false;
@@ -1721,8 +1796,8 @@ void Analysis<F,B,INSTRUCTION>::performSplittingBB(Function &function) {
     }
 }
 
-template<class F, class B, class INSTRUCTION>
-void Analysis<F,B,INSTRUCTION>::printContext() {
+template<class F, class B>
+void Analysis<F,B>::printContext() {
     llvm::outs() << "\n";
     for (auto label : ProcedureContext) {
         llvm::outs()
