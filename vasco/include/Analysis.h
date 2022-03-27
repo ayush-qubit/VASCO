@@ -91,6 +91,14 @@ public:
         // Referred: functional_hash.h (line 110)
         return static_cast<size_t>(P.first) ^ reinterpret_cast<size_t>(P.second);
     }
+
+    auto operator()(const pair<int, fetchLR *> &P) const {
+        // return hash<int>()(P.first) ^ std::hash<Instruction *>()(P.second);
+        // Same as above line, but viewed the actual source code of C++ and then wrote it
+        // Referred: functional_hash.h (line 114)
+        // Referred: functional_hash.h (line 110)
+        return static_cast<size_t>(P.first) ^ reinterpret_cast<size_t>(P.second);
+    }
 };
 
 template<class F, class B>
