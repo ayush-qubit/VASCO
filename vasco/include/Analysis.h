@@ -1702,9 +1702,21 @@ B Analysis<F,B>::NormalFlowFunctionBackward(pair<int, BasicBlock *> current_pair
     if(SLIM) {
         for(auto &index : getReverseList(funcBBInsMap[{context_object->getFunction(),current_pair_of_context_label_and_bb.second}])) {
             auto &inst = globalInstrIndexList[index];
-            if(inst.getCall()) {
-                // Todo retrive function from call instruction
+            if (debug) {
+                printLine(current_pair_of_context_label_and_bb.first);
+                // llvm::outs() << *inst << "\n";
+                llvm::outs() << "OUT: ";
+                printDataFlowValuesBackward(prev);
             }
+            setBackwardComponentAtOutOfThisInstruction(&(inst), prev);//compute OUT from previous IN-value
+            B new_dfv = computeInFromOut(inst);
+            setBackwardComponentAtInOfThisInstruction(&(inst), new_dfv);
+            if (debug) {
+                llvm::outs() << "IN: ";
+                printDataFlowValuesBackward(new_dfv);
+                printLine(current_pair_of_context_label_and_bb.first);
+            }
+            prev = getBackwardComponentAtInOfThisInstruction(inst);
         }
     } else {
         for (auto inst = &*(b.rbegin()); inst != nullptr; inst = inst->getPrevNonDebugInstruction()) {
