@@ -125,10 +125,11 @@ bool callFlag = false; /* Set only if call instr is considered */
 bool cmpFlag = false;  /* Set only if compare instr is considered */
 std::set<Token*> arrOperand; /* Store array operands. Required to compute Pin_start */
 
+
 class fetchLR {
 protected:
  	std::pair<Token*, int > LHS;
-    std::vector<std::pair<Token*, int >> RHS;
+        std::vector<std::pair<Token*, int >> RHS;
 	BitVector InstTy;
 	unsigned int Length;
 public:
@@ -142,7 +143,7 @@ public:
 	void setCall();
 	void setFieldLhs();
 	void setFieldRhs();
-    void setBitcast();
+        void setBitcast();
 	void setBitcastRhs();
 	void setPhiRhsIndx();
 	bool getUse();
@@ -165,12 +166,38 @@ public:
 	fetchLR metaDataPrintfIns(Instruction*);
 	std::string demangle(const char*);
 	std::string getOriginalName(Function*);
+	fetchLR getArgStore(Value* LHS, Value* RHS);
+	void printOperands(fetchLR);
 };
+
+void fetchLR::printOperands(fetchLR Ob) {
+  errs() << "\n Inside printOperands..........";
+  std::pair<Token*, int> tempLHS;
+  Token* lhsVal;
+  int indirLhs;
+  std::vector<std::pair<Token*, int>> rhsVector;
+  std::set<std::pair<Token*, std::string>> OUTofInst, INofInst, INofInstPrev;
+  std::string indxLHS;
+
+  tempLHS = Ob.getLHS();
+  lhsVal = tempLHS.first;  
+  indirLhs = tempLHS.second;
+  if (lhsVal != NULL)
+	errs() << "\n Lhs: <"<<lhsVal->getName()<<", "<<indirLhs<<">";
+  rhsVector = Ob.getRHS();
+  for (std::vector<std::pair<Token*, int>>::iterator r = rhsVector.begin(); r!=rhsVector.end(); r++) {					
+	std::pair<Token*, int > rhsVal = *r;
+	errs() << "\n Rhs: <"<< rhsVal.first->getName() << ", "<<rhsVal.second <<">";
+   }
+}
 
 fetchLR::fetchLR() {
   this->Length = 12;
   InstTy = llvm::BitVector(this->Length, false);
 }
+
+std::list<fetchLR> ArgStore; /* Mapped formal and actual arguments*/ 
+bool flagArgs = false;
 
 void fetchLR::setUse() { InstTy.set(insUse); }
 
@@ -289,7 +316,10 @@ fetchLR fetchLR::metaDataSetter(Instruction* I) {
 
  		    if (isa<GlobalVariable>(GOP->getOperand(0))) { /*Distinguishing between two kinds of GEP STORE instrs */
 		    	this->setFieldRhs(); 
-			indirRhs = 1;
+			if (GOP->getOperand(0)->getType()->getContainedType(0)->isArrayTy())
+				indirRhs = 0;
+			else    
+				indirRhs = 1;
 			#ifdef PRINT
 			    	errs() <<"\n Name : "<< opRhs->getName() <<"  Field Index: "<< opRhs->getFieldIndex();
 			#endif
@@ -563,7 +593,10 @@ fetchLR fetchLR::metaDataSetter(Instruction* I) {
 				#if defined(TRACE) || defined(PRINT) 
 					errs() << "\n PHI Operand is an formal/input parameter. ";
 		                #endif
-				indirRhs = 1;
+				if (opRhs->isGlobalVar())
+					indirRhs = 0;
+				else
+					indirRhs = 1;
 				objStruct.setInsPhiRhsOpd((i-1),opRhs,"",indirRhs);
 				RHS.push_back(std::make_pair(opRhs, indirRhs));
 			}
@@ -677,7 +710,7 @@ fetchLR fetchLR::metaDataReturnIns(Instruction* I) {
 	#ifdef PRINT
 	errs() << "\n Instr is a RETURN ";
 	#endif
-	std::vector<Token*> vecRetIns = IM->extractToken(RI);
+	std::vector<Token*> vecRetIns = IM->extractToken(RI); 
 	Token* opLhs, *opRhs;
 	Ob.setUse();
 
@@ -692,6 +725,18 @@ fetchLR fetchLR::metaDataReturnIns(Instruction* I) {
    }//end outer if
    return Ob;
 }// end RETURN
+
+fetchLR fetchLR::getArgStore(Value* LHS, Value* RHS) {
+#if defined(TRACE) || defined(PRINT) 
+  errs() << "\n Inside getArgStore....";
+#endif
+  fetchLR Ob;
+  spatial::Token* RHSTok = TW.getToken(new Token(RHS));
+  Ob.RHS.push_back(std::make_pair(RHSTok, 1));
+  Ob.LHS = std::make_pair(TW.getToken(new Token(LHS)), 1);	   	  
+  return Ob;
+}
+
 
 ///Computes the RHS Tokens for Printf/Scanf Call Instructions in LLVM IR
 fetchLR fetchLR::metaDataPrintfIns(Instruction* I) {
@@ -738,11 +783,37 @@ fetchLR fetchLR::metaDataPrintfIns(Instruction* I) {
 		}//end inner if			   
    	}//end outer if
 	else {  
-		#if defined(TRACE) || defined(PRINT) 
-		errs() << "\n Function not supported";
-		#endif
-	}
-   }//end call
+		fetchLR objFetchLR;
+		//#if defined(TRACE) || defined(PRINT) 
+		errs() << "\n Instr is a call instruction.........";
+		//#endif
+		Function* FunType = CI->getCalledFunction();
+		insFlag = true; //Instr is considered and not skipped
+               
+	        std::vector<Token*> vecCall = IM->extractToken(CI);
+		if (!vecCall.empty()) {
+			if (vecCall[0]->getName() != "NULL")
+		        	Ob.LHS = std::make_pair(vecCall[0], 1);
+		        Token* opRhs = TW.getToken(new spatial::Token(FunType));
+			Ob.RHS.push_back(std::make_pair(opRhs, 1));
+			Ob.setCall();
+			callFlag = true;
+			
+			for(int i=0; i <CI->arg_size();i++) {
+ 			   fetchLR newObjFetchLR, tempfetchLR;
+         	           if (!isa<Instruction>(CI->getArgOperand(i)))
+                        	continue;
+                    	    tempfetchLR = newObjFetchLR.getArgStore(CI->getCalledFunction()->getArg(i),CI->getArgOperand(i));
+			    ArgStore.push_back(tempfetchLR);
+		    	    flagArgs = true;
+		         }
+/*		    errs() << "\n Printing the arguments of function call....................";
+		    errs() << "\n Argstore lhs= "<<(ArgStore.getLHS()).first->getName();
+		    errs() << "\n Argstore lhs= "<<((ArgStore.getRHS())[0]).first->getName();
+		    errs() << "\n Instruction counter = "<< instrCounter;	*/
+		 }//end if
+	   }//end else call
+   }
    return Ob;
 }
 //-------------------------------------------------------------------------------------------
@@ -760,8 +831,8 @@ public:
 	Transform() {
 		 IM = new spatial::LFCPAInstModel(&TW);
 	}
-	void setLhsRhsMap(Function*, BasicBlock*);
-	void printGlobalInstrList();
+	void setLhsRhsMap(Function*, BasicBlock*); 
+	void printGlobalInstrList();	
 	void printfuncBBInsMap();
 	void printmapSkippedIns();
 	void printmapModeledIns();
@@ -830,7 +901,7 @@ bool Transform::isBBInsLstEmpty(Function* F, BasicBlock* B)   {
     #if defined(TRACE) || defined(PRINT) 
     errs() << "\n Inside isBBInsLstEmpty....."; 
     #endif
-    for (auto itr : funcBBInsMap)	{
+    for (auto itr : funcBBInsMap)	{ 
 	Function * function;
 	BasicBlock* basicBlock;
 	std::tie(function, basicBlock) = itr.first;
@@ -920,9 +991,11 @@ void Transform::simplifyIR(Function* F, BasicBlock* B) {
 		errs() << "\n Instr is a Call.";
 		ins->print(errs());
 		#endif
+		
 		insPrintf = objFetchLR.metaDataPrintfIns(ins);
+		errs()<<"\n callFLag= "<<callFlag;
 		if (callFlag) {
-			tempInstLR[ins] = insPrintf;
+			tempInstLR[ins] = insPrintf; 
 			callFlag = false; //reset flag to handle other call instructions
 		}
 	   }   
@@ -982,6 +1055,13 @@ void Transform::setLhsRhsMap(Function* F, BasicBlock* B) {
 		errs() << "\n Function name: "<<F<< "\t BB: "<<B;
 		#endif
 		fetchLR insPrintf = tempInstLR[ins];
+		if(flagArgs) {
+		   for (std::list<fetchLR>::iterator i=ArgStore.begin(), e=ArgStore.end(); i!=e; ++i)  {
+		   globalInstrIndexList[instrCounter] =  *i;  
+                   funcBBInsMap[std::make_pair(F, B)].push_back(instrCounter);
+		   instrCounter++;
+		  }
+		}
 	        globalInstrIndexList[instrCounter] =  insPrintf;  
 		funcBBInsMap[std::make_pair(F, B)].push_back(instrCounter);
 		mapInstWithIndx[instrCounter] = ins;
@@ -998,6 +1078,7 @@ void Transform::setLhsRhsMap(Function* F, BasicBlock* B) {
 	     errs() << "\n Instruction is not skipped.";
 	     #endif
 	     fetchLR tempInstOb = objFetchLR.metaDataSetter(ins);
+	     
 	     if (insFlag) {
 		 #ifdef PRINT
 		 errs() << "\n Not skipped flag: "<<instrCounter;
@@ -1094,3 +1175,4 @@ void Transform::printGlobalInstrList() {
    }//end outer for
    errs() << "\n";			
 }
+

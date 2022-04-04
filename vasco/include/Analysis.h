@@ -1119,10 +1119,11 @@ void Analysis<F,B>::doAnalysisForward() {
                 for(auto &index : funcBBInsMap[{f,bb}]) {
                     auto &inst = globalInstrIndexList[index];
                     if(inst.getCall()) {
-                        
+                        // TODO
                     } else{
                         if (debug) {
                             printLine(current_context_label);
+                            inst.printOperands(inst);
                             llvm::outs() << "IN: ";
                             printDataFlowValuesForward(prev);
                         }
@@ -1321,6 +1322,7 @@ F Analysis<F,B>::NormalFlowFunctionForward(pair<int, BasicBlock *> current_pair_
             auto &inst = globalInstrIndexList[index];
             if (debug) {
                 printLine(current_pair_of_context_label_and_bb.first);
+                inst.printOperands(inst);
                 llvm::outs() << "IN: ";
                 printDataFlowValuesForward(prev);
             }
@@ -1517,6 +1519,21 @@ void Analysis<F,B>::doAnalysisBackward() {
                     auto &inst = globalInstrIndexList[index];
                     if(inst.getCall()) {
                         // Todo retrive function from call instruction
+                    } else {
+                        if (debug) {
+                            printLine(current_context_label);
+                            inst.printOperands(inst);
+                            llvm::outs() << "OUT: ";
+                            printDataFlowValuesBackward(prev);
+                        }
+                        setBackwardComponentAtOutOfThisInstruction(&inst, prev);//compute OUT from previous IN-value
+                        setBackwardComponentAtInOfThisInstruction(&inst, computeInFromOut(inst));
+                        prev = getBackwardComponentAtInOfThisInstruction(inst);
+                        if (debug) {
+                            llvm::outs() << "IN: ";
+                            printDataFlowValuesBackward(prev);
+                            printLine(current_context_label);
+                        }
                     }
                 }
             } else {
@@ -1704,7 +1721,7 @@ B Analysis<F,B>::NormalFlowFunctionBackward(pair<int, BasicBlock *> current_pair
             auto &inst = globalInstrIndexList[index];
             if (debug) {
                 printLine(current_pair_of_context_label_and_bb.first);
-                // llvm::outs() << *inst << "\n";
+                inst.printOperands(inst);
                 llvm::outs() << "OUT: ";
                 printDataFlowValuesBackward(prev);
             }
