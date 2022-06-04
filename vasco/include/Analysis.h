@@ -851,7 +851,6 @@ void Analysis<F,B>::doAnalysis(Module &M) {
         }
         auto stop = high_resolution_clock::now();
         this->SLIMTime = duration_cast<seconds>(stop - start);
-	    // printGlobalInstrList();
     }
     start = high_resolution_clock::now();
     int i = 0;
@@ -896,13 +895,13 @@ void Analysis<F,B>::doAnalysis(Module &M) {
         {
             // current_analysis_direction=2;
             setCurrentAnalysisDirection(2);
-            while(backward_worklist.size()>0)
+            while(not backward_worklist.empty())
             {
                 doAnalysisBackward();
             }
             // current_analysis_direction=1;
             setCurrentAnalysisDirection(1);
-            while(forward_worklist.size()>0)
+            while(not forward_worklist.empty())
             {
                 doAnalysisForward();
             }
